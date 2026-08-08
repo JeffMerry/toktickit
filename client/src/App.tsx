@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 
+interface Category {
+  id: number;
+  name: string;
+}
+
 function App() {
   const [status, setStatus] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -9,15 +15,24 @@ function App() {
     setLoading(true);
     setError(null);
     setStatus(null);
+    setCategories([]);
 
     try {
-      const response = await fetch('http://localhost:5000/api/health');
-      if (!response.ok) {
-        throw new Error('Backend response was not ok');
+      const [healthRes, catRes] = await Promise.all([
+        fetch('http://localhost:5000/api/health'),
+        fetch('http://localhost:5000/api/categories'),
+      ]);
+
+      if (!healthRes.ok || !catRes.ok) {
+        throw new Error('API request failed');
       }
-      const data = await response.json();
-      if (data.status === 'ok') {
+
+      const healthData = await healthRes.json();
+      const categoriesData = await catRes.json();
+
+      if (healthData.status === 'ok') {
         setStatus('Online');
+        setCategories(categoriesData);
       } else {
         setStatus('Offline');
         setError('Unexpected backend status');
@@ -49,14 +64,28 @@ function App() {
           </button>
         </div>
 
-        {loading && <p className="text-secondary">loading...</p>}
+        {loading && <p className="text-secondary fs-5">loading...</p>}
 
-        {status && (
+        {!loading && status && (
           <div className="mt-3">
-            <h5>
+            <h5 className="mb-3">
               System Status: <span className={status === 'Online' ? 'text-success fw-bold' : 'text-danger fw-bold'}>{status}</span>
             </h5>
-            {error && <p className="text-danger mt-1">{error}</p>}
+
+            {status === 'Online' && categories.length > 0 && (
+              <div className="mt-4">
+                <h6 className="fw-bold mb-2">Supported Request Categories:</h6>
+                <ul className="list-group list-group-flush border rounded bg-white">
+                  {categories.map((cat) => (
+                    <li key={cat.id} className="list-group-item">
+                      {cat.id}. {cat.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {error && <p className="text-danger mt-2">{error}</p>}
           </div>
         )}
       </main>
