@@ -71,4 +71,22 @@
 | **Partner's Response** | Nothing was changed. |
 | **Outcome** | Approved and merged |
 
+### PR B — feature/1-project-foundation → lab1-staging 
+
+| Field | Detail |
+|-------|--------|
+| **PR Link** | [https://github.com/bbxndg/Toktickit/pull/5](https://github.com/bbxndg/Toktickit/pull/5) |
+| **My Review Comment** | "[The project foundation structure is correct and complete.]" |
+| **Partner's Response** | Nothing was changed. |
+| **Outcome** | Approved and merged |
+
+### PR C — feature/2-health-check → lab1-staging 
+
+| Field | Detail |
+|-------|--------|
+| **PR Link** | [https://github.com/bbxndg/Toktickit/pull/6](https://github.com/bbxndg/Toktickit/pull/6) |
+| **My Review Comment** | "[Everything is in good order, complete, and the JSON Response has the specified structure and includes Integration Testing with Supertest.]" |
+| **Partner's Response** | Nothing was changed. |
+| **Outcome** | Approved and merged |
+
 ---
