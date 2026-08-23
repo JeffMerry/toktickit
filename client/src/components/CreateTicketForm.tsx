@@ -27,6 +27,7 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
   const [requestedPriority, setRequestedPriority] = useState<string>('MEDIUM');
   const [summary, setSummary] = useState<string>('');
   const [description, setDescription] = useState<string>('');
+  const [files, setFiles] = useState<File[]>([]);
 
   // Reference Data States
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -71,6 +72,50 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
 
     fetchRefData();
   }, []);
+
+  // Handle File Selection with Client Validations (BR-09, BR-10, BR-11)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const selectedFiles = Array.from(e.target.files);
+    let fileError = '';
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    const maxSizeBytes = 5 * 1024 * 1024; // 5 MB
+
+    const validNewFiles: File[] = [];
+
+    for (const file of selectedFiles) {
+      if (!allowedTypes.includes(file.type)) {
+        fileError = `File "${file.name}" has an invalid type. Only JPG, PNG, WEBP, and PDF are allowed.`;
+        break;
+      }
+      if (file.size > maxSizeBytes) {
+        fileError = `File "${file.name}" exceeds the 5 MB size limit.`;
+        break;
+      }
+      validNewFiles.push(file);
+    }
+
+    if (fileError) {
+      setErrors((prev) => ({ ...prev, attachments: fileError }));
+      return;
+    }
+
+    // Check Total Count (Max 5 files)
+    if (files.length + validNewFiles.length > 5) {
+      setErrors((prev) => ({ ...prev, attachments: 'Maximum 5 attachments allowed per ticket.' }));
+      return;
+    }
+
+    setErrors((prev) => ({ ...prev, attachments: '' }));
+    setFiles((prev) => [...prev, ...validNewFiles]);
+    e.target.value = ''; // Reset input
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    if (errors.attachments) setErrors((prev) => ({ ...prev, attachments: '' }));
+  };
 
   // Client-side Validation (BR-05, BR-06, BR-07, BR-08)
   const validateForm = (): boolean => {
@@ -119,17 +164,21 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
     setSubmitting(true);
 
     try {
+      const formData = new FormData();
+      formData.append('requesterId', String(selectedRequester.id));
+      formData.append('categoryId', categoryId);
+      formData.append('relatedSystemId', relatedSystemId);
+      formData.append('requestedPriority', requestedPriority);
+      formData.append('summary', summary.trim());
+      formData.append('description', description.trim());
+
+      files.forEach((file) => {
+        formData.append('attachments', file);
+      });
+
       const res = await fetch('http://localhost:5000/api/tickets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requesterId: selectedRequester.id,
-          categoryId: Number(categoryId),
-          relatedSystemId: Number(relatedSystemId),
-          requestedPriority,
-          summary: summary.trim(),
-          description: description.trim(),
-        }),
+        body: formData,
       });
 
       const data = await res.json();
@@ -301,6 +350,46 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
           {errors.description && <span style={styles.fieldErrorMessage}>{errors.description}</span>}
         </div>
 
+        {/* Attachment Upload Section (BR-09, BR-10, BR-11) */}
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Supporting Attachments (Optional)</label>
+          <p style={{ fontSize: '0.8rem', color: '#6B7280', margin: '0 0 8px 0' }}>
+            Allowed types: <strong>JPG, PNG, WEBP, PDF</strong>. Max 5 MB per file. Up to 5 files per ticket.
+          </p>
+
+          <input
+            type="file"
+            multiple
+            accept=".jpg,.jpeg,.png,.webp,.pdf"
+            onChange={handleFileChange}
+            disabled={files.length >= 5}
+            style={styles.fileInput}
+          />
+
+          {errors.attachments && <span style={styles.fieldErrorMessage}>{errors.attachments}</span>}
+
+          {/* Uploaded File List */}
+          {files.length > 0 && (
+            <div style={styles.fileList}>
+              {files.map((file, idx) => (
+                <div key={idx} style={styles.fileItem}>
+                  <span style={styles.fileName}>
+                    📎 {file.name} <small style={{ color: '#6B7280' }}>({(file.size / (1024 * 1024)).toFixed(2)} MB)</small>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(idx)}
+                    style={styles.removeFileBtn}
+                    title="Remove file"
+                  >
+                    ✖
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Action Buttons */}
         <div style={styles.buttonRow}>
           {onCancel && (
@@ -400,6 +489,44 @@ const styles: { [key: string]: React.CSSProperties } = {
     resize: 'vertical',
     boxSizing: 'border-box',
     fontFamily: 'inherit',
+  },
+  fileInput: {
+    display: 'block',
+    width: '100%',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px dashed #B8E2C8',
+    backgroundColor: '#EAF6EF',
+    cursor: 'pointer',
+    boxSizing: 'border-box',
+  },
+  fileList: {
+    marginTop: '10px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  fileItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    backgroundColor: '#F9FAFB',
+    border: '1px solid #E5E7EB',
+    fontSize: '0.85rem',
+  },
+  fileName: {
+    fontWeight: 500,
+    color: '#1F2937',
+  },
+  removeFileBtn: {
+    backgroundColor: 'transparent',
+    border: 'none',
+    color: '#DC2626',
+    cursor: 'pointer',
+    fontWeight: 700,
+    padding: '2px 6px',
   },
   charCount: {
     fontSize: '0.75rem',
