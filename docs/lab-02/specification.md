@@ -1,12 +1,14 @@
 # Lab 2 Sprint Engineering Specification: TokTickIT Requester Ticketing MVP
 
 ## 1. Sprint Goal
+
 Deliver a fully functional, responsive Requester-facing IT support ticketing MVP with a consistent Zen Green design system. The system enables Requesters to select a temporary testing identity, create IT support tickets with permitted attachments, view and manage their owned tickets with search/filtering/sorting/pagination, inspect ticket details, and soft-remove attachments safely—all validated through spec-driven and test-driven engineering contracts.
 
 ---
 
 ## 2. Stakeholder Request Interpretation
-The IT department requires a professional, end-user-facing ticketing experience. A Requester must be able to submit a ticket with a summary, category, related system, requested priority, description, and supporting evidence files. Once submitted, the system generates a unique, official Ticket Number and saves the data securely. 
+
+The IT department requires a professional, end-user-facing ticketing experience. A Requester must be able to submit a ticket with a summary, category, related system, requested priority, description, and supporting evidence files. Once submitted, the system generates a unique, official Ticket Number and saves the data securely.
 
 Requesters can view their tickets in a dedicated "My Tickets" screen with search, filtering, sorting, and pagination capabilities, ensuring complete data isolation so no user can access another user's tickets. Since authentication will be introduced in Lab 3, Lab 2 features a temporary **Development Requester Selection** screen to simulate multi-user testing contexts. The application must strictly enforce the Zen Green Theme across all views.
 
@@ -15,6 +17,7 @@ Requesters can view their tickets in a dedicated "My Tickets" screen with search
 ## 3. Scope
 
 ### Included
+
 - **Development Requester Context**: Temporary simulated login selector to switch between active seeded Requesters.
 - **Create Ticket Workflow**: Form submission with field validations, attachment uploads, system-generated Ticket Number, and initial status `New`.
 - **My Tickets Workflow**: Paginated list of tickets owned strictly by the active Requester with search, filter (Category, Priority, Status), and sorting capabilities.
@@ -23,6 +26,7 @@ Requesters can view their tickets in a dedicated "My Tickets" screen with search
 - **Zen Green Design System**: Consistent visual layout, accessible components, and responsive design across Desktop ($\ge 992\text{px}$), Tablet ($768-991\text{px}$), and Mobile ($< 768\text{px}$).
 
 ### Excluded
+
 - Real authentication, login/logout sessions, password hashing, JWTs, or role-based authorization (deferred to Lab 3).
 - IT Staff workflow (Ticket queues, claiming/reassigning tickets, changing IT Priority, resolving/closing tickets).
 - Ticket collaboration (Public comments, internal notes, actions taken).
@@ -75,9 +79,10 @@ Requesters can view their tickets in a dedicated "My Tickets" screen with search
 ## 7. Data Changes
 
 ### Prisma Models Required:
+
 1. `RequesterUser`: `id`, `name`, `email`, `department`, `isActive`, `createdAt`, `updatedAt`
-2. `Category`: `id`, `name`, `description`, `isActive`
-3. `RelatedSystem`: `id`, `name`, `description`, `isActive`
+2. `Category`: `id`, `name`, `description`, `isActive`, `createdAt`, `updatedAt`
+3. `RelatedSystem`: `id`, `name`, `description`, `isActive`, `createdAt`, `updatedAt`
 4. `Ticket`: `id`, `ticketNumber` (unique), `requesterId`, `categoryId`, `relatedSystemId`, `requestedPriority`, `currentStatus`, `summary`, `description`, `createdAt`, `updatedAt`
 5. `Attachment`: `id`, `ticketId`, `fileName`, `fileSize`, `mimeType`, `storagePath`, `isRemoved`, `removedAt`, `removalReason`, `createdAt`
 
@@ -113,6 +118,7 @@ Requesters can view their tickets in a dedicated "My Tickets" screen with search
 ## 10. Definition of Done
 
 ### Part 1: Product Completion
+
 - [ ] All functional requirements (FR-01 to FR-09) and business rules (BR-01 to BR-13) implemented.
 - [ ] All acceptance criteria (AC-01 to AC-08) satisfied and verified.
 - [ ] 100% passing automated unit, API, UI, and E2E tests.
@@ -120,6 +126,7 @@ Requesters can view their tickets in a dedicated "My Tickets" screen with search
 - [ ] Graceful error handling for API failures, validation errors, and empty states.
 
 ### Part 2: Course Delivery Requirements
+
 - [ ] Feature branches merged into `lab2-staging` via peer-reviewed Pull Requests.
 - [ ] Complete `docs/lab-02/` documentation (`specification.md`, `ui-spec.md`, `api-spec.md`, `tests.md`, `reviewer.md`, `ai-use.md`).
 - [ ] Screenshots collected under `artifacts/lab-02/screenshots/`.
