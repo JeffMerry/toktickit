@@ -21,12 +21,52 @@ export interface TicketItem {
   attachments?: TicketAttachment[];
 }
 
-interface MyTicketsTableProps {
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+interface MyTicketsListProps {
   tickets: TicketItem[];
+  pagination: PaginationMeta;
+  categories: { id: number; name: string }[];
+  search: string;
+  selectedCategory: string;
+  selectedPriority: string;
+  selectedStatus: string;
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
+  onSearchChange: (value: string) => void;
+  onCategoryChange: (value: string) => void;
+  onPriorityChange: (value: string) => void;
+  onStatusChange: (value: string) => void;
+  onSortChange: (field: string) => void;
+  onPageChange: (page: number) => void;
+  onClearFilters: () => void;
   onSelectTicket?: (ticketId: number) => void;
 }
 
-export const MyTicketsList: React.FC<MyTicketsTableProps> = ({ tickets, onSelectTicket }) => {
+export const MyTicketsList: React.FC<MyTicketsListProps> = ({
+  tickets,
+  pagination,
+  categories,
+  search,
+  selectedCategory,
+  selectedPriority,
+  selectedStatus,
+  sortBy,
+  sortOrder,
+  onSearchChange,
+  onCategoryChange,
+  onPriorityChange,
+  onStatusChange,
+  onSortChange,
+  onPageChange,
+  onClearFilters,
+  onSelectTicket,
+}) => {
   // Helper for formatting date
   const formatDate = (dateStr: string) => {
     try {
@@ -116,20 +156,98 @@ export const MyTicketsList: React.FC<MyTicketsTableProps> = ({ tickets, onSelect
     );
   };
 
+  const hasActiveFilters = Boolean(search || selectedCategory || selectedPriority || selectedStatus);
+
+  const startRecord = (pagination.page - 1) * pagination.limit + 1;
+  const endRecord = Math.min(pagination.page * pagination.limit, pagination.total);
+
   return (
-    <div>
-      {/* 1. Desktop & Tablet View (Table Grid) */}
+    <div style={styles.outerContainer}>
+      {/* 1. Filter Bar Controls */}
+      <div style={styles.filterBar}>
+        {/* Search Bar Input */}
+        <div style={styles.searchBox}>
+          <span style={styles.searchIcon}>🔍</span>
+          <input
+            type="text"
+            placeholder="Search by ticket number or summary..."
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            style={styles.searchInput}
+          />
+        </div>
+
+        {/* Filters Group */}
+        <div style={styles.filtersGroup}>
+          {/* Category Filter */}
+          <select
+            value={selectedCategory}
+            onChange={(e) => onCategoryChange(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="">All Categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Priority Filter */}
+          <select
+            value={selectedPriority}
+            onChange={(e) => onPriorityChange(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="">All Priorities</option>
+            <option value="LOW">LOW</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="HIGH">HIGH</option>
+            <option value="URGENT">URGENT</option>
+          </select>
+
+          {/* Status Filter */}
+          <select
+            value={selectedStatus}
+            onChange={(e) => onStatusChange(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="">All Statuses</option>
+            <option value="New">New</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Resolved">Resolved</option>
+            <option value="Closed">Closed</option>
+          </select>
+
+          {/* Clear Filters Button */}
+          {hasActiveFilters && (
+            <button onClick={onClearFilters} style={styles.clearBtn} title="Reset all filters">
+              ↺ Clear Filters
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Desktop Table Data Grid */}
       <div style={styles.desktopContainer}>
         <table style={styles.table}>
           <thead>
             <tr style={styles.theadRow}>
-              <th style={styles.th}>Ticket No.</th>
-              <th style={styles.th}>Created Date</th>
+              <th style={styles.thSortable} onClick={() => onSortChange('ticketNumber')}>
+                Ticket No. {sortBy === 'ticketNumber' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+              </th>
+              <th style={styles.thSortable} onClick={() => onSortChange('createdAt')}>
+                Created Date {sortBy === 'createdAt' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+              </th>
               <th style={styles.th}>Summary</th>
               <th style={styles.th}>Category</th>
               <th style={styles.th}>System</th>
-              <th style={styles.th}>Priority</th>
-              <th style={styles.th}>Status</th>
+              <th style={styles.thSortable} onClick={() => onSortChange('requestedPriority')}>
+                Priority {sortBy === 'requestedPriority' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+              </th>
+              <th style={styles.thSortable} onClick={() => onSortChange('currentStatus')}>
+                Status {sortBy === 'currentStatus' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -163,7 +281,7 @@ export const MyTicketsList: React.FC<MyTicketsTableProps> = ({ tickets, onSelect
         </table>
       </div>
 
-      {/* 2. Mobile View (Responsive Cards) */}
+      {/* 3. Mobile Card View */}
       <div style={styles.mobileContainer}>
         {tickets.map((ticket) => (
           <div
@@ -192,20 +310,132 @@ export const MyTicketsList: React.FC<MyTicketsTableProps> = ({ tickets, onSelect
           </div>
         ))}
       </div>
+
+      {/* 4. Pagination Controls Bar */}
+      {pagination.total > 0 && (
+        <div style={styles.paginationBar}>
+          <div style={{ fontSize: '0.85rem', color: '#4B5563' }}>
+            Showing <strong>{startRecord}</strong> to <strong>{endRecord}</strong> of{' '}
+            <strong>{pagination.total}</strong> tickets
+          </div>
+
+          <div style={styles.paginationButtons}>
+            <button
+              onClick={() => onPageChange(pagination.page - 1)}
+              disabled={pagination.page <= 1}
+              style={{
+                ...styles.pageBtn,
+                ...(pagination.page <= 1 ? styles.pageBtnDisabled : {}),
+              }}
+            >
+              ‹ Previous
+            </button>
+
+            {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((p) => (
+              <button
+                key={p}
+                onClick={() => onPageChange(p)}
+                style={{
+                  ...styles.pageNumBtn,
+                  ...(pagination.page === p ? styles.activePageNumBtn : {}),
+                }}
+              >
+                {p}
+              </button>
+            ))}
+
+            <button
+              onClick={() => onPageChange(pagination.page + 1)}
+              disabled={pagination.page >= pagination.totalPages}
+              style={{
+                ...styles.pageBtn,
+                ...(pagination.page >= pagination.totalPages ? styles.pageBtnDisabled : {}),
+              }}
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 const styles: { [key: string]: React.CSSProperties } = {
+  outerContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  filterBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '12px',
+    flexWrap: 'wrap',
+    backgroundColor: '#FFFFFF',
+    padding: '16px',
+    borderRadius: '10px',
+    border: '1px solid #E5E7EB',
+  },
+  searchBox: {
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    border: '1px solid #D1D5DB',
+    borderRadius: '8px',
+    padding: '6px 12px',
+    minWidth: '280px',
+    flex: 1,
+  },
+  searchIcon: {
+    marginRight: '8px',
+    fontSize: '0.9rem',
+    color: '#6B7280',
+  },
+  searchInput: {
+    border: 'none',
+    backgroundColor: 'transparent',
+    outline: 'none',
+    width: '100%',
+    fontSize: '0.9rem',
+    color: '#1F2937',
+  },
+  filtersGroup: {
+    display: 'flex',
+    gap: '10px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  filterSelect: {
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid #D1D5DB',
+    backgroundColor: '#FFFFFF',
+    fontSize: '0.875rem',
+    color: '#374151',
+    outline: 'none',
+    cursor: 'pointer',
+  },
+  clearBtn: {
+    padding: '8px 14px',
+    borderRadius: '8px',
+    border: '1px solid #D1D5DB',
+    backgroundColor: '#F3F4F6',
+    color: '#374151',
+    fontWeight: 600,
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+  },
   desktopContainer: {
     overflowX: 'auto',
-    borderRadius: '8px',
+    borderRadius: '10px',
     border: '1px solid #E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
   table: {
     width: '100%',
     borderCollapse: 'collapse',
-    backgroundColor: '#FFFFFF',
     textAlign: 'left',
     fontSize: '0.9rem',
   },
@@ -219,6 +449,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#374151',
     whiteSpace: 'nowrap',
   },
+  thSortable: {
+    padding: '14px 16px',
+    fontWeight: 600,
+    color: '#374151',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
   tr: {
     borderBottom: '1px solid #E5E7EB',
     cursor: 'pointer',
@@ -228,9 +466,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '14px 16px',
     verticalAlign: 'middle',
   },
-  // Mobile Card Styles
   mobileContainer: {
-    display: 'none', // Controlled via CSS media query or responsive flex in App
+    display: 'none',
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -268,5 +505,50 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#6B7280',
     borderTop: '1px solid #F3F4F6',
     paddingTop: '10px',
+  },
+  paginationBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px',
+    backgroundColor: '#FFFFFF',
+    borderRadius: '10px',
+    border: '1px solid #E5E7EB',
+    flexWrap: 'wrap',
+    gap: '12px',
+  },
+  paginationButtons: {
+    display: 'flex',
+    gap: '6px',
+    alignItems: 'center',
+  },
+  pageBtn: {
+    padding: '6px 14px',
+    borderRadius: '6px',
+    border: '1px solid #D1D5DB',
+    backgroundColor: '#FFFFFF',
+    color: '#374151',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  pageBtnDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+  },
+  pageNumBtn: {
+    padding: '6px 12px',
+    borderRadius: '6px',
+    border: '1px solid #D1D5DB',
+    backgroundColor: '#FFFFFF',
+    color: '#374151',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  activePageNumBtn: {
+    backgroundColor: '#006B3C',
+    color: '#FFFFFF',
+    borderColor: '#006B3C',
   },
 };
