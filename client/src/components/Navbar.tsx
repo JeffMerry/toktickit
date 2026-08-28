@@ -11,7 +11,41 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
 
   return (
     <header style={styles.header}>
-      <div style={styles.navContainer}>
+      <style>{`
+        .navbar-responsive-container {
+          max-width: 1200px;
+          margin: 0 auto;
+          min-height: 64px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 0;
+          gap: 12px;
+        }
+
+        @media (max-width: 768px) {
+          .navbar-responsive-container {
+            flex-wrap: wrap;
+            padding: 10px 0;
+          }
+          .nav-links-group {
+            order: 3;
+            width: 100%;
+            justify-content: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            padding-top: 8px;
+            margin-top: 4px;
+          }
+          .user-name-text {
+            max-width: 80px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+        }
+      `}</style>
+
+      <div className="navbar-responsive-container">
         {/* Brand Identity */}
         <div style={styles.brand} onClick={() => onNavigate('my-tickets')}>
           <div style={styles.logoIcon}>
@@ -25,7 +59,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
 
         {/* Navigation Links */}
         {selectedRequester && (
-          <nav style={styles.navLinks}>
+          <nav className="nav-links-group" style={styles.navLinks}>
             <button
               onClick={() => onNavigate('my-tickets')}
               style={{
@@ -55,7 +89,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 {selectedRequester.name.charAt(0).toUpperCase()}
               </div>
               <div style={styles.userInfo}>
-                <span style={styles.userName}>{selectedRequester.name}</span>
+                <span className="user-name-text" style={styles.userName}>
+                  {selectedRequester.name}
+                </span>
                 <span style={styles.userTag}>Requester</span>
               </div>
               <button
@@ -84,16 +120,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   header: {
     backgroundColor: '#006B3C', // Primary Green
     color: '#FFFFFF',
-    padding: '0 24px',
+    padding: '0 16px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-  },
-  navContainer: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    height: '64px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   brand: {
     display: 'flex',
@@ -111,21 +139,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     justifyContent: 'center',
   },
   brandName: {
-    fontSize: '1.25rem',
+    fontSize: '1.2rem',
     fontWeight: 700,
     letterSpacing: '-0.02em',
   },
   navLinks: {
     display: 'flex',
-    gap: '8px',
+    gap: '6px',
   },
   navBtn: {
     backgroundColor: 'transparent',
     border: 'none',
     color: 'rgba(255, 255, 255, 0.85)',
-    padding: '8px 16px',
+    padding: '8px 14px',
     borderRadius: '6px',
-    fontSize: '0.9rem',
+    fontSize: '0.875rem',
     fontWeight: 500,
     cursor: 'pointer',
     transition: 'all 0.2s',
@@ -142,19 +170,19 @@ const styles: { [key: string]: React.CSSProperties } = {
   userBadge: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '8px',
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    padding: '4px 12px 4px 6px',
+    padding: '4px 10px 4px 6px',
     borderRadius: '20px',
   },
   avatar: {
-    width: '28px',
-    height: '28px',
+    width: '26px',
+    height: '26px',
     borderRadius: '50%',
     backgroundColor: '#EAF6EF',
     color: '#006B3C',
     fontWeight: 700,
-    fontSize: '0.85rem',
+    fontSize: '0.8rem',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -164,32 +192,33 @@ const styles: { [key: string]: React.CSSProperties } = {
     flexDirection: 'column',
   },
   userName: {
-    fontSize: '0.85rem',
+    fontSize: '0.8rem',
     fontWeight: 600,
     lineHeight: 1.2,
   },
   userTag: {
-    fontSize: '0.7rem',
+    fontSize: '0.675rem',
     color: 'rgba(255, 255, 255, 0.75)',
   },
   changeBtn: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     border: 'none',
     color: '#FFFFFF',
-    padding: '4px 10px',
+    padding: '3px 8px',
     borderRadius: '12px',
-    fontSize: '0.75rem',
+    fontSize: '0.725rem',
     fontWeight: 600,
     cursor: 'pointer',
-    marginLeft: '6px',
+    marginLeft: '4px',
   },
   selectUserBtn: {
     backgroundColor: '#EAF6EF',
     color: '#006B3C',
     border: 'none',
-    padding: '8px 16px',
+    padding: '6px 12px',
     borderRadius: '6px',
     fontWeight: 600,
+    fontSize: '0.85rem',
     cursor: 'pointer',
   },
 };

@@ -163,10 +163,58 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
 
   return (
     <div style={styles.outerContainer}>
+      {/* Dynamic CSS Media Queries for Responsive Display */}
+      <style>{`
+        .desktop-tickets-container {
+          display: block;
+        }
+        .mobile-tickets-container {
+          display: none;
+        }
+        .filter-bar-box {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .filter-select-element {
+          flex: 1;
+          min-width: 120px;
+        }
+
+        @media (max-width: 768px) {
+          .desktop-tickets-container {
+            display: none !important;
+          }
+          .mobile-tickets-container {
+            display: flex !important;
+            flex-direction: column;
+            gap: 12px;
+          }
+          .filter-bar-box {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .search-box-container {
+            min-width: 100% !important;
+          }
+          .filters-group-container {
+            width: 100%;
+            justify-content: space-between;
+          }
+          .pagination-bar-container {
+            flex-direction: column;
+            gap: 12px;
+            text-align: center;
+          }
+        }
+      `}</style>
+
       {/* 1. Filter Bar Controls */}
-      <div style={styles.filterBar}>
+      <div className="filter-bar-box" style={styles.filterBar}>
         {/* Search Bar Input */}
-        <div style={styles.searchBox}>
+        <div className="search-box-container" style={styles.searchBox}>
           <span style={styles.searchIcon}>🔍</span>
           <input
             type="text"
@@ -178,9 +226,10 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
         </div>
 
         {/* Filters Group */}
-        <div style={styles.filtersGroup}>
+        <div className="filters-group-container" style={styles.filtersGroup}>
           {/* Category Filter */}
           <select
+            className="filter-select-element"
             value={selectedCategory}
             onChange={(e) => onCategoryChange(e.target.value)}
             style={styles.filterSelect}
@@ -195,6 +244,7 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
 
           {/* Priority Filter */}
           <select
+            className="filter-select-element"
             value={selectedPriority}
             onChange={(e) => onPriorityChange(e.target.value)}
             style={styles.filterSelect}
@@ -208,6 +258,7 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
 
           {/* Status Filter */}
           <select
+            className="filter-select-element"
             value={selectedStatus}
             onChange={(e) => onStatusChange(e.target.value)}
             style={styles.filterSelect}
@@ -222,14 +273,14 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
           {/* Clear Filters Button */}
           {hasActiveFilters && (
             <button onClick={onClearFilters} style={styles.clearBtn} title="Reset all filters">
-              ↺ Clear Filters
+              ↺ Clear
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. Desktop Table Data Grid */}
-      <div style={styles.desktopContainer}>
+      {/* 2. Desktop Table Data Grid (Displays on ≥ 768px) */}
+      <div className="desktop-tickets-container" style={styles.desktopContainer}>
         <table style={styles.table}>
           <thead>
             <tr style={styles.theadRow}>
@@ -281,8 +332,8 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
         </table>
       </div>
 
-      {/* 3. Mobile Card View */}
-      <div style={styles.mobileContainer}>
+      {/* 3. Mobile Card View (Displays on < 768px) */}
+      <div className="mobile-tickets-container">
         {tickets.map((ticket) => (
           <div
             key={ticket.id}
@@ -290,7 +341,7 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
             onClick={() => onSelectTicket && onSelectTicket(ticket.id)}
           >
             <div style={styles.cardHeader}>
-              <span style={{ fontWeight: 700, color: '#006B3C', fontFamily: 'monospace' }}>
+              <span style={{ fontWeight: 700, color: '#006B3C', fontFamily: 'monospace', fontSize: '0.95rem' }}>
                 {ticket.ticketNumber}
               </span>
               <div>{getStatusBadge(ticket.currentStatus)}</div>
@@ -313,7 +364,7 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
 
       {/* 4. Pagination Controls Bar */}
       {pagination.total > 0 && (
-        <div style={styles.paginationBar}>
+        <div className="pagination-bar-container" style={styles.paginationBar}>
           <div style={{ fontSize: '0.85rem', color: '#4B5563' }}>
             Showing <strong>{startRecord}</strong> to <strong>{endRecord}</strong> of{' '}
             <strong>{pagination.total}</strong> tickets
@@ -368,11 +419,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '16px',
   },
   filterBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '12px',
-    flexWrap: 'wrap',
     backgroundColor: '#FFFFFF',
     padding: '16px',
     borderRadius: '10px',
@@ -385,8 +431,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: '1px solid #D1D5DB',
     borderRadius: '8px',
     padding: '6px 12px',
-    minWidth: '280px',
-    flex: 1,
+    minWidth: '240px',
   },
   searchIcon: {
     marginRight: '8px',
@@ -403,7 +448,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   filtersGroup: {
     display: 'flex',
-    gap: '10px',
+    gap: '8px',
     alignItems: 'center',
     flexWrap: 'wrap',
   },
@@ -412,13 +457,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '8px',
     border: '1px solid #D1D5DB',
     backgroundColor: '#FFFFFF',
-    fontSize: '0.875rem',
+    fontSize: '0.85rem',
     color: '#374151',
     outline: 'none',
     cursor: 'pointer',
   },
   clearBtn: {
-    padding: '8px 14px',
+    padding: '8px 12px',
     borderRadius: '8px',
     border: '1px solid #D1D5DB',
     backgroundColor: '#F3F4F6',
@@ -466,14 +511,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '14px 16px',
     verticalAlign: 'middle',
   },
-  mobileContainer: {
-    display: 'none',
-  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: '10px',
     padding: '16px',
-    marginBottom: '12px',
     border: '1px solid #E5E7EB',
     boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
     cursor: 'pointer',
@@ -485,7 +526,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '8px',
   },
   cardSummary: {
-    fontSize: '1rem',
+    fontSize: '0.95rem',
     fontWeight: 700,
     color: '#1F2937',
     margin: '0 0 10px 0',
@@ -514,8 +555,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#FFFFFF',
     borderRadius: '10px',
     border: '1px solid #E5E7EB',
-    flexWrap: 'wrap',
-    gap: '12px',
   },
   paginationButtons: {
     display: 'flex',
