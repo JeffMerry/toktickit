@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { generateTicketNumber } from './utils/ticketNumber';
 
 const app = express();
@@ -116,6 +116,93 @@ app.get('/api/related-systems', async (req, res) => {
   } catch (error) {
     console.error('Error fetching related systems:', error);
     res.status(500).json({ error: 'Failed to fetch related systems' });
+  }
+});
+
+// GET /api/tickets — ดึงรายการตั๋วของผู้แจ้งซ่อม (Ownership Isolation, Search, Filter, Sort, Pagination)
+app.get('/api/tickets', async (req, res) => {
+  try {
+    const { requesterId, search, categoryId, priority, status, sortBy, sortOrder, page, limit } = req.query;
+
+    // 1. Enforce Ownership Protection (BR-13, FR-04): requesterId is mandatory
+    const parsedRequesterId = Number(requesterId);
+    if (!requesterId || isNaN(parsedRequesterId)) {
+      return res.status(400).json({ error: 'requesterId parameter is required and must be a valid number' });
+    }
+
+    // 2. Build Prisma Where Clause
+    const where: Prisma.TicketWhereInput = {
+      requesterId: parsedRequesterId,
+    };
+
+    // Search filter: ticketNumber or summary (case-insensitive)
+    if (search && typeof search === 'string' && search.trim() !== '') {
+      const searchTerm = search.trim();
+      where.OR = [
+        { ticketNumber: { contains: searchTerm, mode: 'insensitive' } },
+        { summary: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+    }
+
+    // Category filter
+    if (categoryId && !isNaN(Number(categoryId))) {
+      where.categoryId = Number(categoryId);
+    }
+
+    // Priority filter
+    if (priority && typeof priority === 'string' && priority.trim() !== '') {
+      where.requestedPriority = priority.trim().toUpperCase();
+    }
+
+    // Status filter
+    if (status && typeof status === 'string' && status.trim() !== '') {
+      where.currentStatus = status.trim();
+    }
+
+    // 3. Build Sorting Clause
+    const validSortFields = ['createdAt', 'ticketNumber', 'requestedPriority', 'currentStatus', 'updatedAt'];
+    const field = sortBy && validSortFields.includes(String(sortBy)) ? String(sortBy) : 'createdAt';
+    const order = sortOrder && String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
+    const orderBy = { [field]: order };
+
+    // 4. Build Pagination
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    // 5. Query Database
+    const [tickets, totalCount] = await Promise.all([
+      prisma.ticket.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limitNum,
+        include: {
+          category: { select: { id: true, name: true } },
+          relatedSystem: { select: { id: true, name: true } },
+          attachments: {
+            where: { isRemoved: false },
+            select: { id: true, fileName: true, fileSize: true, mimeType: true },
+          },
+        },
+      }),
+      prisma.ticket.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limitNum) || 1;
+
+    res.json({
+      data: tickets,
+      pagination: {
+        total: totalCount,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching tickets:', error);
+    res.status(500).json({ error: 'Failed to fetch tickets' });
   }
 });
 
