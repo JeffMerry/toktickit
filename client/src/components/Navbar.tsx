@@ -2,7 +2,7 @@ import React from 'react';
 import { useRequester } from '../context/RequesterContext';
 
 interface NavbarProps {
-  currentView: 'my-tickets' | 'create-ticket' | 'select-requester';
+  currentView: 'my-tickets' | 'create-ticket' | 'select-requester' | 'ticket-detail';
   onNavigate: (view: 'my-tickets' | 'create-ticket' | 'select-requester') => void;
 }
 
@@ -64,7 +64,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
               onClick={() => onNavigate('my-tickets')}
               style={{
                 ...styles.navBtn,
-                ...(currentView === 'my-tickets' ? styles.activeNavBtn : {}),
+                ...(currentView === 'my-tickets' || currentView === 'ticket-detail' ? styles.activeNavBtn : {}),
               }}
             >
               📄 My Tickets

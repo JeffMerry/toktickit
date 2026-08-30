@@ -4,13 +4,21 @@ import { Navbar } from './components/Navbar';
 import { RequesterSelector } from './components/RequesterSelector';
 import { CreateTicketForm } from './components/CreateTicketForm';
 import { MyTicketsList, TicketItem, PaginationMeta } from './components/MyTicketsList';
+import { TicketDetailView, TicketDetailData } from './components/TicketDetailView';
+import { AttachmentSection } from './components/AttachmentSection';
 
-type ViewMode = 'my-tickets' | 'create-ticket' | 'select-requester';
+type ViewMode = 'my-tickets' | 'create-ticket' | 'select-requester' | 'ticket-detail';
 
 function MainApp() {
   const { selectedRequester } = useRequester();
   const [currentView, setCurrentView] = useState<ViewMode>('my-tickets');
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+
+  // Ticket Detail States
+  const [ticketDetail, setTicketDetail] = useState<TicketDetailData | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
+  const [detailError, setDetailError] = useState<{ status?: number; message: string } | null>(null);
 
   // My Tickets Data & Filter States
   const [tickets, setTickets] = useState<TicketItem[]>([]);
@@ -49,7 +57,7 @@ function MainApp() {
     fetchCategories();
   }, []);
 
-  // Fetch Owned Tickets for Active Requester (Enforce Ownership & Data Isolation)
+  // Fetch Owned Tickets for Active Requester (Ownership Isolation)
   const fetchTickets = useCallback(async () => {
     if (!selectedRequester) return;
 
@@ -85,12 +93,57 @@ function MainApp() {
     }
   }, [selectedRequester, search, selectedCategory, selectedPriority, selectedStatus, sortBy, sortOrder, page]);
 
-  // Trigger fetch when parameters or selectedRequester changes
+  // Fetch Ticket Detail with Ownership Validation (BR-13)
+  const fetchTicketDetail = useCallback(async (id: number) => {
+    if (!selectedRequester) return;
+
+    setLoadingDetail(true);
+    setDetailError(null);
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/tickets/${id}?requesterId=${selectedRequester.id}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setDetailError({
+          status: res.status,
+          message: data.error || 'Failed to load ticket details',
+        });
+        setTicketDetail(null);
+        return;
+      }
+
+      setTicketDetail(data);
+    } catch (err: any) {
+      console.error('Error fetching ticket detail:', err);
+      setDetailError({
+        status: 500,
+        message: err.message || 'Network error occurred while fetching ticket detail',
+      });
+      setTicketDetail(null);
+    } finally {
+      setLoadingDetail(false);
+    }
+  }, [selectedRequester]);
+
+  // Trigger ticket list fetch when parameters or selectedRequester changes
   useEffect(() => {
     if (selectedRequester && currentView === 'my-tickets') {
       fetchTickets();
     }
   }, [selectedRequester, currentView, fetchTickets]);
+
+  // Trigger ticket detail fetch when selectedTicketId or currentView changes
+  useEffect(() => {
+    if (selectedRequester && currentView === 'ticket-detail' && selectedTicketId) {
+      fetchTicketDetail(selectedTicketId);
+    }
+  }, [selectedRequester, currentView, selectedTicketId, fetchTicketDetail]);
+
+  const handleSelectTicket = (ticketId: number) => {
+    setSelectedTicketId(ticketId);
+    setCurrentView('ticket-detail');
+  };
 
   // Reset filters to defaults
   const handleClearFilters = () => {
@@ -121,6 +174,7 @@ function MainApp() {
           currentView={currentView}
           onNavigate={(view) => {
             setCreatedTicketNumber(null);
+            setSelectedTicketId(null);
             setCurrentView(view);
           }}
         />
@@ -142,14 +196,15 @@ function MainApp() {
         currentView={currentView}
         onNavigate={(view) => {
           setCreatedTicketNumber(null);
+          setSelectedTicketId(null);
           setCurrentView(view);
         }}
       />
 
       <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px' }}>
+        {/* 1. My Tickets Screen */}
         {currentView === 'my-tickets' && (
           <div>
-            {/* Page Header */}
             <div style={headerStyle}>
               <div>
                 <h1 style={{ fontSize: '1.65rem', color: '#006B3C', margin: 0, fontWeight: 700 }}>
@@ -170,7 +225,6 @@ function MainApp() {
               </button>
             </div>
 
-            {/* Created Ticket Alert Notice */}
             {createdTicketNumber && (
               <div style={successAlertStyle}>
                 <span style={{ fontSize: '1.25rem' }}>🎉</span>
@@ -181,14 +235,12 @@ function MainApp() {
               </div>
             )}
 
-            {/* Loading State */}
             {loadingTickets ? (
               <div style={loadingStateStyle}>
                 <div style={spinnerStyle}></div>
                 <p style={{ color: '#0B7A46', fontWeight: 600, margin: 0 }}>Loading your tickets...</p>
               </div>
             ) : fetchError ? (
-              /* Error State */
               <div style={errorStateStyle}>
                 <p style={{ margin: '0 0 12px 0', fontWeight: 600 }}>⚠️ {fetchError}</p>
                 <button onClick={fetchTickets} style={primaryBtnStyle}>
@@ -196,7 +248,6 @@ function MainApp() {
                 </button>
               </div>
             ) : tickets.length === 0 ? (
-              /* Empty / No-Results State */
               <div style={emptyStateStyle}>
                 <div style={emptyIconCircle}>
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#006B3C" strokeWidth="2">
@@ -235,7 +286,6 @@ function MainApp() {
                 )}
               </div>
             ) : (
-              /* Main My Tickets Data List Component */
               <MyTicketsList
                 tickets={tickets}
                 pagination={pagination}
@@ -265,11 +315,13 @@ function MainApp() {
                 onSortChange={handleSortChange}
                 onPageChange={(p) => setPage(p)}
                 onClearFilters={handleClearFilters}
+                onSelectTicket={handleSelectTicket}
               />
             )}
           </div>
         )}
 
+        {/* 2. Create Ticket Screen */}
         {currentView === 'create-ticket' && (
           <div>
             {createdTicketNumber ? (
@@ -318,11 +370,50 @@ function MainApp() {
               <CreateTicketForm
                 onSuccess={(ticketNum) => {
                   setCreatedTicketNumber(ticketNum);
-                  fetchTickets(); // Refresh list in background
+                  fetchTickets();
                 }}
                 onCancel={() => setCurrentView('my-tickets')}
               />
             )}
+          </div>
+        )}
+
+        {/* 3. Ticket Detail Screen with Attachment Section */}
+        {currentView === 'ticket-detail' && (
+          <div>
+            {loadingDetail ? (
+              <div style={loadingStateStyle}>
+                <div style={spinnerStyle}></div>
+                <p style={{ color: '#0B7A46', fontWeight: 600, margin: 0 }}>Loading ticket details...</p>
+              </div>
+            ) : detailError ? (
+              /* Access Denied (403 Forbidden) or Error View (BR-13 Validation) */
+              <div style={detailError.status === 403 ? accessDeniedCardStyle : errorStateStyle}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>
+                  {detailError.status === 403 ? '🛡️' : '⚠️'}
+                </div>
+                <h2 style={{ margin: '0 0 8px 0', fontSize: '1.4rem' }}>
+                  {detailError.status === 403 ? 'Access Denied (403 Forbidden)' : 'Error Loading Ticket'}
+                </h2>
+                <p style={{ margin: '0 0 20px 0', fontSize: '0.95rem' }}>{detailError.message}</p>
+                <button onClick={() => setCurrentView('my-tickets')} style={primaryBtnStyle}>
+                  ← Return to My Tickets
+                </button>
+              </div>
+            ) : ticketDetail ? (
+              <TicketDetailView
+                ticket={ticketDetail}
+                onBack={() => setCurrentView('my-tickets')}
+              >
+                <AttachmentSection
+                  ticketId={ticketDetail.id}
+                  attachments={ticketDetail.attachments || []}
+                  onAttachmentChanged={() => {
+                    if (selectedTicketId) fetchTicketDetail(selectedTicketId);
+                  }}
+                />
+              </TicketDetailView>
+            ) : null}
           </div>
         )}
       </main>
@@ -428,12 +519,22 @@ const spinnerStyle: React.CSSProperties = {
 };
 
 const errorStateStyle: React.CSSProperties = {
-  padding: '32px',
+  padding: '40px 24px',
   textAlign: 'center',
   backgroundColor: '#FEE2E2',
   color: '#991B1B',
   borderRadius: '12px',
   border: '1px solid #FCA5A5',
+};
+
+const accessDeniedCardStyle: React.CSSProperties = {
+  padding: '48px 24px',
+  textAlign: 'center',
+  backgroundColor: '#FEF2F2',
+  color: '#991B1B',
+  borderRadius: '12px',
+  border: '2px solid #FCA5A5',
+  boxShadow: '0 4px 12px rgba(220, 38, 38, 0.08)',
 };
 
 const emptyStateStyle: React.CSSProperties = {
