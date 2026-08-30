@@ -6,7 +6,7 @@ test.describe('Lab 2 E2E User Journey: TokTickIT Requester Workflow', () => {
     await page.goto('http://localhost:3001');
 
     // Verify Requester Selection screen renders initially
-    await expect(page.locator('h1, h2')).toContainText(/Select Requester/i);
+    await expect(page.locator('h2')).toContainText('Select Development Requester');
 
     // 2. Select Development Requester (e.g., Jennifer Anderson)
     const requesterCard = page.locator('text=Jennifer Anderson').first();
@@ -23,13 +23,9 @@ test.describe('Lab 2 E2E User Journey: TokTickIT Requester Workflow', () => {
     await expect(page.locator('h2')).toContainText('Create IT Support Ticket');
 
     // 5. Fill out Create Ticket Form
-    // Select Category (e.g., Hardware)
     await page.selectOption('select', { index: 1 });
-
-    // Select Priority (e.g., HIGH)
     await page.click('input[value="HIGH"]');
 
-    // Fill Summary and Description
     const uniqueSummary = `E2E Test Ticket - ${Date.now()}`;
     await page.fill('input[placeholder*="summary"]', uniqueSummary);
     await page.fill('textarea[placeholder*="description"]', 'This is an automated E2E test description for TokTickIT Lab 2 verification.');
