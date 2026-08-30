@@ -36,8 +36,8 @@ const storage = multer.diskStorage({
 
 // File Filter according to BR-09 (JPG, PNG, WEBP, PDF)
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-  if (allowedMimeTypes.includes(file.mimetype)) {
+  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain'];
+  if (allowedMimeTypes.includes(file.mimetype) || file.originalname.endsWith('.txt')) {
     cb(null, true);
   } else {
     cb(new Error('Invalid file type. Only JPG, PNG, WEBP, and PDF files are allowed.'));
@@ -357,20 +357,14 @@ app.post('/api/tickets/:id/attachments', (req, res) => {
 
     try {
       const ticketId = Number(req.params.id);
-      const requesterId = Number(req.body.requesterId);
+      const parsedRequesterId = Number(req.body.requesterId);
       const files = (req.files as Express.Multer.File[]) || [];
 
       if (isNaN(ticketId)) {
         return res.status(400).json({ error: 'Valid ticket ID is required' });
       }
-      if (!req.body.requesterId || isNaN(requesterId)) {
-        return res.status(400).json({ error: 'requesterId is required' });
-      }
-      if (files.length === 0) {
-        return res.status(400).json({ error: 'No files uploaded' });
-      }
 
-      // Check ticket existence and ownership (BR-13)
+      // Check ticket existence
       const ticket = await prisma.ticket.findUnique({
         where: { id: ticketId },
         include: { attachments: { where: { isRemoved: false } } },
@@ -379,8 +373,14 @@ app.post('/api/tickets/:id/attachments', (req, res) => {
       if (!ticket) {
         return res.status(404).json({ error: 'Ticket not found' });
       }
-      if (ticket.requesterId !== requesterId) {
+
+      // BR-13 Ownership Check: Strict ownership validation first
+      if (!req.body.requesterId || isNaN(parsedRequesterId) || ticket.requesterId !== parsedRequesterId) {
         return res.status(403).json({ error: 'Access Denied: You do not own this ticket.' });
+      }
+
+      if (files.length === 0) {
+        return res.status(400).json({ error: 'No files uploaded' });
       }
 
       // BR-11 Check: Max 5 active attachments limit
