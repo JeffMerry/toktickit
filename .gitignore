@@ -11,6 +11,14 @@ dist/
 build/
 coverage/
 
+# Test outputs & Artifacts
+test-results/
+playwright-report/
+
+# Uploaded Files & Temporary Attachments
+server/uploads/*
+!server/uploads/.gitkeep
+
 # Logs
 *.log
 npm-debug.log*
