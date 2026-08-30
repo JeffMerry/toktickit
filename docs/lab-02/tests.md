@@ -27,7 +27,7 @@ The test plan ensures full traceability between Functional Requirements (FR), Bu
 | **UI-02** | UI | AC-04, BR-09, BR-10 | Select invalid file format or size $> 5\text{MB}$ in form | Shows field-level red error under file input | `client/src/components/CreateTicketForm.tsx` | Pass |
 | **UI-03** | UI | FR-06 | Responsive My Tickets layout (Table on Desktop, Cards on Mobile) | Displays Table on $\ge 768\text{px}$ and Cards on $< 768\text{px}$ | `client/src/components/MyTicketsList.tsx` | Pass |
 | **UI-04** | UI | AC-06, BR-12 | Soft removal confirmation modal enforcing mandatory removal reason | Requires valid reason before submitting soft removal | `client/src/components/AttachmentSection.tsx` | Pass |
-| **E2E-01** | E2E | AC-01, AC-07 | Complete journey: Select Requester -> Create Ticket -> Search in My Tickets | Ticket created and found in list with matching info | `e2e/lab-02/requester-ticket-flow.spec.ts` | Planned |
+| **E2E-01** | E2E | AC-01, AC-07 | Complete journey: Select Requester -> Create Ticket -> Search in My Tickets -> Detail | Ticket created and found in list with matching info | `e2e/lab-02/requester-ticket-flow.spec.ts` | Pass |
 
 ---
 
@@ -36,12 +36,12 @@ The test plan ensures full traceability between Functional Requirements (FR), Bu
 | Acceptance Criterion | Covered Test IDs | Verification Status |
 | :--- | :--- | :--- |
 | **AC-01** (Create Ticket Success) | `API-01`, `E2E-01` | Verified & Passing |
-| **AC-02** (Requester Selector Required) | `UI-01` | Verified & Passing |
+| **AC-02** (Requester Selector Required) | `UI-01`, `E2E-01` | Verified & Passing |
 | **AC-03** (Ownership Protection) | `API-03`, `API-05`, `API-06` | Verified & Passing |
 | **AC-04** (File Size & Type Validation) | `UNIT-01`, `UI-02` | Verified & Passing |
 | **AC-05** (Max 5 Attachments Limit) | `API-05` | Verified & Passing |
 | **AC-06** (Soft Removal with Reason) | `API-06`, `UI-04` | Verified & Passing |
-| **AC-07** (Search, Filter, Pagination) | `API-04`, `UI-03` | Verified & Passing |
+| **AC-07** (Search, Filter, Pagination) | `API-04`, `UI-03`, `E2E-01` | Verified & Passing |
 | **AC-08** (Responsive Mobile View) | `UI-03` | Verified & Passing |
 
 ---

@@ -114,3 +114,4 @@ The TokTickIT application follows the **Zen Green Theme** to provide a clean, ca
 - `artifacts/lab-02/screenshots/my-tickets/desktop_list.png`
 - `artifacts/lab-02/screenshots/my-tickets/mobile_cards.png`
 - `artifacts/lab-02/screenshots/ticket-detail/desktop_view_and_attachments.png`
+- `artifacts/lab-02/screenshots/ticket-detail/soft_removal_modal.png`
