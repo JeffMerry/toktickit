@@ -304,7 +304,7 @@ Query parameters:
 | `page` | Positive integer; default `1` |
 | `limit` | `1-50`; default `10` |
 
-Response entries include Ticket number, dates, summary, Category, Requester identity required for work, Requested Priority, IT Priority, current status, owner, and `resolutionSuggestedAt`. Pagination uses the envelope defined in section 3.3.
+Response entries include Ticket number, dates, summary, Category, Requester identity required for work, Requested Priority, IT Priority, current status, owner, `requesterResolvedAt`, and `resolutionSuggestedAt`. Pagination uses the envelope defined in section 3.3.
 
 ### 4.2 Operational Ticket Detail
 

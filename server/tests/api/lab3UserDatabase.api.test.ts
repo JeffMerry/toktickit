@@ -40,6 +40,19 @@ describe('Lab 3 user database seed', () => {
     expect(discussionTicket?.publicComments.length).toBeGreaterThan(0);
     expect(discussionTicket?.internalNotes.length).toBeGreaterThan(0);
   });
+
+  it('provides an unassigned ticket and requester resolution indication without a formal status change', async () => {
+    const unassignedTicket = await prisma.ticket.findUnique({
+      where: { ticketNumber: 'TKT-2026-SEED-001' },
+    });
+    const requesterResolvedTicket = await prisma.ticket.findUnique({
+      where: { ticketNumber: 'TKT-2026-SEED-004' },
+    });
+
+    expect(unassignedTicket?.ownerId).toBeNull();
+    expect(requesterResolvedTicket?.requesterResolvedAt).not.toBeNull();
+    expect(requesterResolvedTicket?.currentStatus).toBe(TicketStatus.WAITING_FOR_REQUESTER);
+  });
 });
 
 afterAll(async () => {

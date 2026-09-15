@@ -107,6 +107,7 @@ model Ticket {
   requestedPriority       Priority     @default(MEDIUM)
   itPriority              Priority     @default(MEDIUM)
   currentStatus           TicketStatus @default(NEW)
+  requesterResolvedAt     DateTime?
   resolutionSuggestedAt   DateTime?
   resolutionSuggestedById Int?
   createdAt               DateTime     @default(now())

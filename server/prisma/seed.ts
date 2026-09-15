@@ -91,14 +91,15 @@ async function main() {
     (await prisma.relatedSystem.findMany()).map((system) => [system.name, system])
   );
   const getUserId = (email: string) => usersByEmail.get(email)!.id;
+  const getOptionalUserId = (email?: string) => (email ? getUserId(email) : null);
   const getCategoryId = (name: string) => categoriesByName.get(name)!.id;
   const getSystemId = (name: string) => systemsByName.get(name)!.id;
 
   const tickets = [
-    { ticketNumber: 'TKT-2026-SEED-001', requesterEmail: 'jennifer.anderson@kmutt.ac.th', ownerEmail: 'mary.support@kmutt.ac.th', category: 'Hardware', system: 'Corporate Laptop', requestedPriority: Priority.LOW, itPriority: Priority.MEDIUM, currentStatus: TicketStatus.NEW, summary: 'Laptop keyboard key is loose', description: 'The Enter key is loose and sometimes does not register input.' },
+    { ticketNumber: 'TKT-2026-SEED-001', requesterEmail: 'jennifer.anderson@kmutt.ac.th', category: 'Hardware', system: 'Corporate Laptop', requestedPriority: Priority.LOW, itPriority: Priority.MEDIUM, currentStatus: TicketStatus.NEW, summary: 'Laptop keyboard key is loose', description: 'The Enter key is loose and sometimes does not register input.' },
     { ticketNumber: 'TKT-2026-SEED-002', requesterEmail: 'michael.brown@kmutt.ac.th', ownerEmail: 'somchai.technician@kmutt.ac.th', category: 'Network', system: 'VPN', requestedPriority: Priority.MEDIUM, itPriority: Priority.HIGH, currentStatus: TicketStatus.OPEN, summary: 'VPN disconnects every few minutes', description: 'The VPN connection drops repeatedly while working remotely.' },
     { ticketNumber: 'TKT-2026-SEED-003', requesterEmail: 'sarah.johnson@kmutt.ac.th', ownerEmail: 'niran.engineer@kmutt.ac.th', category: 'Software', system: 'Grade Submission App', requestedPriority: Priority.HIGH, itPriority: Priority.URGENT, currentStatus: TicketStatus.IN_PROGRESS, summary: 'Grade submission page cannot save', description: 'Saving a completed grade form returns an unexpected server error.' },
-    { ticketNumber: 'TKT-2026-SEED-004', requesterEmail: 'david.lee@kmutt.ac.th', ownerEmail: 'somchai.technician@kmutt.ac.th', category: 'Account and Access', system: 'Email', requestedPriority: Priority.URGENT, itPriority: Priority.URGENT, currentStatus: TicketStatus.WAITING_FOR_REQUESTER, summary: 'Email account is locked', description: 'The account is locked after a password reset and cannot receive mail.' },
+    { ticketNumber: 'TKT-2026-SEED-004', requesterEmail: 'david.lee@kmutt.ac.th', ownerEmail: 'somchai.technician@kmutt.ac.th', category: 'Account and Access', system: 'Email', requestedPriority: Priority.URGENT, itPriority: Priority.URGENT, currentStatus: TicketStatus.WAITING_FOR_REQUESTER, summary: 'Email account is locked', description: 'The account is locked after a password reset and cannot receive mail.', requesterResolvedAt: new Date('2026-09-02T09:00:00.000Z') },
     { ticketNumber: 'TKT-2026-SEED-005', requesterEmail: 'jennifer.anderson@kmutt.ac.th', ownerEmail: 'mary.support@kmutt.ac.th', category: 'Hardware', system: 'Printer', requestedPriority: Priority.MEDIUM, itPriority: Priority.MEDIUM, currentStatus: TicketStatus.RESOLVED, summary: 'Printer prints blank pages', description: 'The departmental printer accepts jobs but prints only blank pages.', resolutionSuggestedByEmail: 'mary.support@kmutt.ac.th' },
     { ticketNumber: 'TKT-2026-SEED-006', requesterEmail: 'michael.brown@kmutt.ac.th', ownerEmail: 'niran.engineer@kmutt.ac.th', category: 'Network', system: 'Campus Wi-Fi', requestedPriority: Priority.LOW, itPriority: Priority.LOW, currentStatus: TicketStatus.CLOSED, summary: 'Wi-Fi signal is weak in meeting room', description: 'The campus Wi-Fi signal is consistently weak in the second-floor meeting room.', resolutionSuggestedByEmail: 'niran.engineer@kmutt.ac.th' },
     { ticketNumber: 'TKT-2026-SEED-007', requesterEmail: 'sarah.johnson@kmutt.ac.th', ownerEmail: 'mary.support@kmutt.ac.th', category: 'Software', system: 'LEB2 App', requestedPriority: Priority.HIGH, itPriority: Priority.HIGH, currentStatus: TicketStatus.REOPENED, summary: 'Learning app error returned again', description: 'The previously resolved application error has returned after the latest update.' },
@@ -111,12 +112,13 @@ async function main() {
       where: { ticketNumber: ticket.ticketNumber },
       update: {
         requesterId: getUserId(ticket.requesterEmail),
-        ownerId: getUserId(ticket.ownerEmail),
+        ownerId: getOptionalUserId(ticket.ownerEmail),
         categoryId: getCategoryId(ticket.category),
         relatedSystemId: getSystemId(ticket.system),
         requestedPriority: ticket.requestedPriority,
         itPriority: ticket.itPriority,
         currentStatus: ticket.currentStatus,
+        requesterResolvedAt: ticket.requesterResolvedAt ?? null,
         summary: ticket.summary,
         description: ticket.description,
         resolutionSuggestedAt: ticket.resolutionSuggestedByEmail ? new Date('2026-09-01T09:00:00.000Z') : null,
@@ -125,12 +127,13 @@ async function main() {
       create: {
         ticketNumber: ticket.ticketNumber,
         requesterId: getUserId(ticket.requesterEmail),
-        ownerId: getUserId(ticket.ownerEmail),
+        ownerId: getOptionalUserId(ticket.ownerEmail),
         categoryId: getCategoryId(ticket.category),
         relatedSystemId: getSystemId(ticket.system),
         requestedPriority: ticket.requestedPriority,
         itPriority: ticket.itPriority,
         currentStatus: ticket.currentStatus,
+        requesterResolvedAt: ticket.requesterResolvedAt ?? null,
         summary: ticket.summary,
         description: ticket.description,
         resolutionSuggestedAt: ticket.resolutionSuggestedByEmail ? new Date('2026-09-01T09:00:00.000Z') : null,

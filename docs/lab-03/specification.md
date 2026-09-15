@@ -174,7 +174,7 @@ Actions Taken are not required in Lab 3, so resolution is not blocked by incompl
 
 - `User`: `id`, `name`, `email`, `normalizedEmail`, `passwordHash`, `role`, `isActive`, `mustChangePassword`, `createdAt`, `updatedAt`.
 - `Session`: `id`, `tokenHash`, `userId`, `expiresAt`, `createdAt`, `lastUsedAt`.
-- `Ticket`: existing fields plus `ownerId?`, `itPriority`, `currentStatus`, `resolutionSuggestedAt?`, `resolutionSuggestedById?`, and optimistic concurrency through `updatedAt`.
+- `Ticket`: existing fields plus `ownerId?`, `itPriority`, `currentStatus`, `requesterResolvedAt?` (Requester indication only), `resolutionSuggestedAt?`, `resolutionSuggestedById?`, and optimistic concurrency through `updatedAt`.
 - `PublicComment`: `id`, `ticketId`, `authorId`, `content`, `createdAt`.
 - `InternalNote`: `id`, `ticketId`, `authorId`, `content`, `createdAt`.
 
