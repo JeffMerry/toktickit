@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import app from '../../src/app';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, UserRole } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -12,7 +12,7 @@ describe('POST /api/tickets API', () => {
 
   beforeAll(async () => {
     // Fetch active seeded records
-    const reqUser = await prisma.requesterUser.findFirst({ where: { isActive: true } });
+    const reqUser = await prisma.user.findFirst({ where: { isActive: true, role: UserRole.REQUESTER } });
     const cat = await prisma.category.findFirst({ where: { isActive: true } });
     const sys = await prisma.relatedSystem.findFirst({ where: { isActive: true } });
 
@@ -40,7 +40,7 @@ describe('POST /api/tickets API', () => {
     expect(response.status).toBe(201);
     expect(response.body).toHaveProperty('id');
     expect(response.body.ticketNumber).toMatch(/^TKT-2026-[A-Z0-9]{6}$/);
-    expect(response.body.currentStatus).toBe('New');
+    expect(response.body.currentStatus).toBe('NEW');
     expect(response.body.summary).toBe('Laptop battery drains very quickly');
   });
 

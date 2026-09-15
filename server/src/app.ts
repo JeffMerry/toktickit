@@ -3,11 +3,30 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import type { Prisma, Priority, TicketStatus } from '@prisma/client';
 import { generateTicketNumber } from './utils/ticketNumber';
 
 const app = express();
 const prisma = new PrismaClient();
+
+const legacyStatusMap: Record<string, TicketStatus> = {
+  NEW: 'NEW',
+  OPEN: 'OPEN',
+  'IN PROGRESS': 'IN_PROGRESS',
+  IN_PROGRESS: 'IN_PROGRESS',
+  'WAITING FOR REQUESTER': 'WAITING_FOR_REQUESTER',
+  WAITING_FOR_REQUESTER: 'WAITING_FOR_REQUESTER',
+  RESOLVED: 'RESOLVED',
+  CLOSED: 'CLOSED',
+  REOPENED: 'REOPENED',
+  CANCELLED: 'CANCELLED',
+  CANCELED: 'CANCELLED',
+};
+
+function parseTicketStatus(value: string): TicketStatus | undefined {
+  return legacyStatusMap[value.trim().toUpperCase()];
+}
 
 app.use(cors());
 app.use(express.json());
@@ -64,8 +83,8 @@ app.get('/api/health', (req, res) => {
 // GET /api/requesters — ดึงเฉพาะ Active Development Requesters
 app.get('/api/requesters', async (req, res) => {
   try {
-    const requesters = await prisma.requesterUser.findMany({
-      where: { isActive: true },
+    const requesters = await prisma.user.findMany({
+      where: { isActive: true, role: 'REQUESTER' },
       orderBy: { id: 'asc' },
       select: {
         id: true,
@@ -146,11 +165,17 @@ app.get('/api/tickets', async (req, res) => {
     }
 
     if (priority && typeof priority === 'string' && priority.trim() !== '') {
-      where.requestedPriority = priority.trim().toUpperCase();
+      const parsedPriority = priority.trim().toUpperCase() as Priority;
+      if (['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(parsedPriority)) {
+        where.requestedPriority = parsedPriority;
+      }
     }
 
     if (status && typeof status === 'string' && status.trim() !== '') {
-      where.currentStatus = status.trim();
+      const parsedStatus = parseTicketStatus(status);
+      if (parsedStatus) {
+        where.currentStatus = parsedStatus;
+      }
     }
 
     const validSortFields = ['createdAt', 'ticketNumber', 'requestedPriority', 'currentStatus', 'updatedAt'];
@@ -261,8 +286,8 @@ app.post('/api/tickets', (req, res) => {
       if (!requesterId || isNaN(parsedRequesterId)) {
         return res.status(400).json({ error: 'Valid Requester ID is required' });
       }
-      const requester = await prisma.requesterUser.findFirst({
-        where: { id: parsedRequesterId, isActive: true },
+      const requester = await prisma.user.findFirst({
+        where: { id: parsedRequesterId, isActive: true, role: 'REQUESTER' },
       });
       if (!requester) {
         return res.status(400).json({ error: 'Active Requester not found' });
@@ -314,8 +339,8 @@ app.post('/api/tickets', (req, res) => {
           requesterId: parsedRequesterId,
           categoryId: parsedCategoryId,
           relatedSystemId: parsedSystemId,
-          requestedPriority: priorityUpper,
-          currentStatus: 'New',
+          requestedPriority: priorityUpper as Priority,
+          currentStatus: 'NEW',
           summary: trimmedSummary,
           description: trimmedDescription,
           attachments: {

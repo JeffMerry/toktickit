@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import app from '../../src/app';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, TicketStatus, UserRole } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 
@@ -15,8 +15,8 @@ describe('Ticket Detail & Attachment Lifecycle API Tests', () => {
 
   beforeAll(async () => {
     // Fetch active requesters
-    const activeRequesters = await prisma.requesterUser.findMany({
-      where: { isActive: true },
+    const activeRequesters = await prisma.user.findMany({
+      where: { isActive: true, role: UserRole.REQUESTER },
       take: 2,
     });
 
@@ -38,7 +38,7 @@ describe('Ticket Detail & Attachment Lifecycle API Tests', () => {
         categoryId: category.id,
         relatedSystemId: system.id,
         requestedPriority: 'HIGH',
-        currentStatus: 'New',
+        currentStatus: TicketStatus.NEW,
         summary: 'Attachment testing ticket summary',
         description: 'Detailed description for testing attachment upload and soft removal.',
       },
