@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import app from '../../src/app';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, TicketStatus, UserRole } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -13,8 +13,8 @@ describe('GET /api/tickets API (My Tickets List)', () => {
 
   beforeAll(async () => {
     // Fetch active seeded requesters
-    const activeRequesters = await prisma.requesterUser.findMany({
-      where: { isActive: true },
+    const activeRequesters = await prisma.user.findMany({
+      where: { isActive: true, role: UserRole.REQUESTER },
       take: 2,
     });
 
@@ -39,7 +39,7 @@ describe('GET /api/tickets API (My Tickets List)', () => {
           categoryId,
           relatedSystemId: systemId,
           requestedPriority: 'HIGH',
-          currentStatus: 'New',
+          currentStatus: TicketStatus.NEW,
           summary: 'Laptop screen flickering issue',
           description: 'The laptop display flickers randomly when using browser.',
         },
@@ -49,7 +49,7 @@ describe('GET /api/tickets API (My Tickets List)', () => {
           categoryId,
           relatedSystemId: systemId,
           requestedPriority: 'LOW',
-          currentStatus: 'New',
+          currentStatus: TicketStatus.NEW,
           summary: 'Printer paper jam in department',
           description: 'Departmental printer fails to feed A4 paper properly.',
         },
@@ -64,7 +64,7 @@ describe('GET /api/tickets API (My Tickets List)', () => {
         categoryId,
         relatedSystemId: systemId,
         requestedPriority: 'URGENT',
-        currentStatus: 'New',
+        currentStatus: TicketStatus.NEW,
         summary: 'VPN access denied for remote user',
         description: 'Unable to connect to campus network via Cisco VPN client.',
       },
