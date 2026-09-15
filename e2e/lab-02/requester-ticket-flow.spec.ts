@@ -5,13 +5,17 @@ test.describe('Lab 2 E2E User Journey: TokTickIT Requester Workflow', () => {
     // 1. Visit Client Web Application
     await page.goto('http://localhost:3001');
 
+    // Clear previous storage and reload to ensure clean Requester Selection state
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+
     // Verify Requester Selection screen renders initially
     await expect(page.locator('h2')).toContainText('Select Development Requester');
 
-    // 2. Select Development Requester (e.g., Jennifer Anderson)
-    const requesterCard = page.locator('text=Jennifer Anderson').first();
-    await expect(requesterCard).toBeVisible();
-    await requesterCard.click();
+    // 2. Select Development Requester (Submit form to continue as Jennifer Anderson)
+    await page.click('button[type="submit"]');
+    await page.waitForTimeout(600);
 
     // 3. Verify Navigation to My Tickets
     await expect(page.locator('h1')).toContainText('My Tickets');
@@ -23,12 +27,13 @@ test.describe('Lab 2 E2E User Journey: TokTickIT Requester Workflow', () => {
     await expect(page.locator('h2')).toContainText('Create IT Support Ticket');
 
     // 5. Fill out Create Ticket Form
-    await page.selectOption('select', { index: 1 });
+    await page.selectOption('select >> nth=0', { index: 1 });
+    await page.selectOption('select >> nth=1', { index: 1 });
     await page.click('input[value="HIGH"]');
 
-    const uniqueSummary = `E2E Test Ticket - ${Date.now()}`;
-    await page.fill('input[placeholder*="summary"]', uniqueSummary);
-    await page.fill('textarea[placeholder*="description"]', 'This is an automated E2E test description for TokTickIT Lab 2 verification.');
+    const uniqueSummary = `E2E Verified Ticket - ${Date.now()}`;
+    await page.fill('input[placeholder*="Briefly describe"]', uniqueSummary);
+    await page.fill('textarea', 'This is an automated E2E test description for TokTickIT Lab 2 verification.');
 
     // Submit Ticket Form
     await page.click('button[type="submit"]');
@@ -45,15 +50,18 @@ test.describe('Lab 2 E2E User Journey: TokTickIT Requester Workflow', () => {
     // 8. Search for the newly created ticket in My Tickets
     const searchInput = page.locator('input[placeholder*="Search"]');
     await searchInput.fill(uniqueSummary);
+    await page.waitForTimeout(400);
 
-    // Verify created ticket appears in the list
-    await expect(page.locator(`text=${uniqueSummary}`)).toBeVisible();
+    // Verify created ticket appears in the list (use .first() to support responsive desktop/mobile DOM)
+    const ticketItem = page.locator(`text=${uniqueSummary}`).first();
+    await expect(ticketItem).toBeVisible();
 
     // 9. Click on the ticket to view details
-    await page.click(`text=${uniqueSummary}`);
+    await ticketItem.click();
+    await page.waitForTimeout(600);
 
     // Verify Ticket Detail View
     await expect(page.locator('text=Ticket Details')).toBeVisible();
-    await expect(page.locator(`text=${uniqueSummary}`)).toBeVisible();
+    await expect(page.locator(`text=${uniqueSummary}`).first()).toBeVisible();
   });
 });
