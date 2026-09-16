@@ -17,6 +17,7 @@ import {
   validatePassword,
   verifyPassword,
 } from './utils/auth';
+import { operationalAccessError } from './utils/staffAuthorization';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -104,6 +105,13 @@ function requireRequester(req: AuthenticatedRequest, res: Response, next: NextFu
   if (req.auth.user.role !== 'REQUESTER') {
     return res.status(403).json({ error: 'Requester access is required.' });
   }
+  next();
+}
+
+function requireOperationalUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.auth) return res.status(401).json({ error: 'Authentication is required.' });
+  const error = operationalAccessError(req.auth.user);
+  if (error) return res.status(403).json({ error });
   next();
 }
 
