@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
@@ -6,9 +6,138 @@ import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
 import type { Prisma, Priority, TicketStatus } from '@prisma/client';
 import { generateTicketNumber } from './utils/ticketNumber';
+import {
+  createSessionToken,
+  hashPassword,
+  hashSessionToken,
+  normalizeEmail,
+  readCookie,
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_MS,
+  validatePassword,
+  verifyPassword,
+} from './utils/auth';
 
 const app = express();
 const prisma = new PrismaClient();
+const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const loginAttempts = new Map<string, { failures: number; firstFailedAt: number; lockedUntil?: number }>();
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 5;
+
+type SafeUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR';
+  isActive: boolean;
+  mustChangePassword: boolean;
+};
+
+type AuthenticatedRequest = Request & { auth?: { sessionId: number; user: SafeUser } };
+
+const safeUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  isActive: true,
+  mustChangePassword: true,
+} as const;
+
+function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_TTL_MS,
+    path: '/',
+  };
+}
+
+function clearSessionCookie(res: Response) {
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+  });
+}
+
+function requireTrustedOrigin(req: Request, res: Response, next: NextFunction) {
+  const origin = req.get('origin');
+  if (origin && origin !== clientOrigin) {
+    return res.status(403).json({ error: 'Request origin is not allowed.' });
+  }
+  next();
+}
+
+async function requireAuthentication(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const rawToken = readCookie(req.headers.cookie, SESSION_COOKIE_NAME);
+  if (!rawToken) return res.status(401).json({ error: 'Authentication is required.' });
+
+  try {
+    const session = await prisma.session.findFirst({
+      where: {
+        tokenHash: hashSessionToken(rawToken),
+        expiresAt: { gt: new Date() },
+        user: { isActive: true },
+      },
+      select: { id: true, user: { select: safeUserSelect } },
+    });
+    if (!session) {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Authentication is required.' });
+    }
+    req.auth = { sessionId: session.id, user: session.user };
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+function requireRequester(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.auth) return res.status(401).json({ error: 'Authentication is required.' });
+  if (req.auth.user.mustChangePassword) {
+    return res.status(403).json({ error: 'Password change is required before accessing this resource.' });
+  }
+  if (req.auth.user.role !== 'REQUESTER') {
+    return res.status(403).json({ error: 'Requester access is required.' });
+  }
+  next();
+}
+
+function rejectClientSuppliedRequesterId(req: Request, res: Response): boolean {
+  const hasRequesterId = Object.prototype.hasOwnProperty.call(req.query || {}, 'requesterId')
+    || Object.prototype.hasOwnProperty.call(req.body || {}, 'requesterId');
+  if (!hasRequesterId) return false;
+  res.status(400).json({ error: 'Client-supplied requesterId is not allowed.' });
+  return true;
+}
+
+function loginAttemptKey(req: Request, normalizedEmail: string): string {
+  return `${normalizedEmail}:${req.ip || 'unknown'}`;
+}
+
+function isLoginThrottled(key: string): boolean {
+  const attempt = loginAttempts.get(key);
+  if (!attempt) return false;
+  const now = Date.now();
+  if (attempt.lockedUntil && attempt.lockedUntil > now) return true;
+  if (attempt.firstFailedAt + LOGIN_ATTEMPT_WINDOW_MS <= now) loginAttempts.delete(key);
+  return false;
+}
+
+function recordLoginFailure(key: string): boolean {
+  const now = Date.now();
+  const existing = loginAttempts.get(key);
+  const attempt = !existing || existing.firstFailedAt + LOGIN_ATTEMPT_WINDOW_MS <= now
+    ? { failures: 1, firstFailedAt: now }
+    : { ...existing, failures: existing.failures + 1 };
+  if (attempt.failures >= LOGIN_MAX_FAILURES) attempt.lockedUntil = now + LOGIN_ATTEMPT_WINDOW_MS;
+  loginAttempts.set(key, attempt);
+  return Boolean(attempt.lockedUntil);
+}
 
 const legacyStatusMap: Record<string, TicketStatus> = {
   NEW: 'NEW',
@@ -28,8 +157,95 @@ function parseTicketStatus(value: string): TicketStatus | undefined {
   return legacyStatusMap[value.trim().toUpperCase()];
 }
 
-app.use(cors());
+app.use(cors({ origin: clientOrigin, credentials: true }));
 app.use(express.json());
+
+// Authentication endpoints
+app.post('/api/auth/login', requireTrustedOrigin, async (req, res) => {
+  const { email, password } = req.body || {};
+  if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  const attemptKey = loginAttemptKey(req, normalizedEmail);
+  if (isLoginThrottled(attemptKey)) {
+    return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { normalizedEmail },
+      select: { ...safeUserSelect, passwordHash: true },
+    });
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      if (recordLoginFailure(attemptKey)) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+    if (!user.isActive) {
+      if (recordLoginFailure(attemptKey)) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+      return res.status(403).json({ error: 'This account is inactive.' });
+    }
+
+    loginAttempts.delete(attemptKey);
+    const { rawToken, tokenHash } = createSessionToken();
+    await prisma.session.create({
+      data: { tokenHash, userId: user.id, expiresAt: new Date(Date.now() + SESSION_TTL_MS) },
+    });
+    res.cookie(SESSION_COOKIE_NAME, rawToken, sessionCookieOptions());
+    return res.json({ user: { ...user, passwordHash: undefined } });
+  } catch (error) {
+    console.error('Error signing in:', error);
+    return res.status(500).json({ error: 'Unable to sign in.' });
+  }
+});
+
+app.get('/api/auth/me', requireAuthentication, (req: AuthenticatedRequest, res) => {
+  return res.json({ user: req.auth!.user });
+});
+
+app.post('/api/auth/change-password', requireTrustedOrigin, requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || typeof confirmPassword !== 'string') {
+    return res.status(400).json({ error: 'Current password, new password, and confirmation are required.' });
+  }
+  const passwordError = validatePassword(newPassword);
+  if (passwordError || newPassword !== confirmPassword) {
+    return res.status(400).json({ error: passwordError || 'Password confirmation does not match.' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.auth!.user.id }, select: { passwordHash: true } });
+    if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+
+    const { rawToken, tokenHash } = createSessionToken();
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: req.auth!.user.id }, data: { passwordHash, mustChangePassword: false } }),
+      prisma.session.deleteMany({ where: { userId: req.auth!.user.id } }),
+      prisma.session.create({ data: { tokenHash, userId: req.auth!.user.id, expiresAt: new Date(Date.now() + SESSION_TTL_MS) } }),
+    ]);
+    const updatedUser = { ...req.auth!.user, mustChangePassword: false };
+    res.cookie(SESSION_COOKIE_NAME, rawToken, sessionCookieOptions());
+    return res.json({ user: updatedUser });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    return res.status(500).json({ error: 'Unable to change password.' });
+  }
+});
+
+app.post('/api/auth/logout', requireTrustedOrigin, requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  try {
+    await prisma.session.delete({ where: { id: req.auth!.sessionId } });
+    clearSessionCookie(res);
+    return res.json({ loggedOut: true });
+  } catch (error) {
+    console.error('Error signing out:', error);
+    return res.status(500).json({ error: 'Unable to sign out.' });
+  }
+});
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, '../uploads');
@@ -81,25 +297,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // GET /api/requesters — ดึงเฉพาะ Active Development Requesters
-app.get('/api/requesters', async (req, res) => {
-  try {
-    const requesters = await prisma.user.findMany({
-      where: { isActive: true, role: 'REQUESTER' },
-      orderBy: { id: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        department: true,
-      },
-    });
-    res.json(requesters);
-  } catch (error) {
-    console.error('Error fetching requesters:', error);
-    res.status(500).json({ error: 'Failed to fetch active requesters' });
-  }
-});
-
 // GET /api/categories — ดึงเฉพาะ Active Categories
 app.get('/api/categories', async (req, res) => {
   try {
@@ -139,17 +336,13 @@ app.get('/api/related-systems', async (req, res) => {
 });
 
 // GET /api/tickets — ดึงรายการตั๋วของผู้แจ้งซ่อม (Ownership Isolation, Search, Filter, Sort, Pagination)
-app.get('/api/tickets', async (req, res) => {
+app.get('/api/tickets', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
-    const { requesterId, search, categoryId, priority, status, sortBy, sortOrder, page, limit } = req.query;
-
-    const parsedRequesterId = Number(requesterId);
-    if (!requesterId || isNaN(parsedRequesterId)) {
-      return res.status(400).json({ error: 'requesterId parameter is required and must be a valid number' });
-    }
+    const { search, categoryId, priority, status, sortBy, sortOrder, page, limit } = req.query;
+    if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const where: Prisma.TicketWhereInput = {
-      requesterId: parsedRequesterId,
+      requesterId: req.auth!.user.id,
     };
 
     if (search && typeof search === 'string' && search.trim() !== '') {
@@ -223,17 +416,14 @@ app.get('/api/tickets', async (req, res) => {
 });
 
 // GET /api/tickets/:id — ดึงรายละเอียดตั๋วรายใบ (Ownership Check / BR-13)
-app.get('/api/tickets/:id', async (req, res) => {
+app.get('/api/tickets/:id', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
     const ticketId = Number(req.params.id);
-    const requesterId = Number(req.query.requesterId);
 
     if (isNaN(ticketId)) {
       return res.status(400).json({ error: 'Valid ticket ID is required' });
     }
-    if (!req.query.requesterId || isNaN(requesterId)) {
-      return res.status(400).json({ error: 'requesterId parameter is required' });
-    }
+    if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -252,8 +442,8 @@ app.get('/api/tickets/:id', async (req, res) => {
     }
 
     // BR-13 Ownership Check: Strict access control
-    if (ticket.requesterId !== requesterId) {
-      return res.status(403).json({ error: 'Access Denied: You do not have permission to view this ticket.' });
+    if (ticket.requesterId !== req.auth!.user.id) {
+      return res.status(404).json({ error: 'Ticket not found' });
     }
 
     res.json(ticket);
@@ -264,7 +454,7 @@ app.get('/api/tickets/:id', async (req, res) => {
 });
 
 // POST /api/tickets — สร้างตั๋วใหม่พร้อมไฟล์แนบ
-app.post('/api/tickets', (req, res) => {
+app.post('/api/tickets', requireTrustedOrigin, requireAuthentication, requireRequester, (req: AuthenticatedRequest, res) => {
   upload.array('attachments', 5)(req, res, async (err: any) => {
     if (err) {
       if (err instanceof multer.MulterError) {
@@ -279,18 +469,11 @@ app.post('/api/tickets', (req, res) => {
     }
 
     try {
-      const { requesterId, categoryId, relatedSystemId, requestedPriority, summary, description } = req.body;
+      const { categoryId, relatedSystemId, requestedPriority, summary, description } = req.body;
       const files = (req.files as Express.Multer.File[]) || [];
-
-      const parsedRequesterId = Number(requesterId);
-      if (!requesterId || isNaN(parsedRequesterId)) {
-        return res.status(400).json({ error: 'Valid Requester ID is required' });
-      }
-      const requester = await prisma.user.findFirst({
-        where: { id: parsedRequesterId, isActive: true, role: 'REQUESTER' },
-      });
-      if (!requester) {
-        return res.status(400).json({ error: 'Active Requester not found' });
+      if (rejectClientSuppliedRequesterId(req, res)) {
+        files.forEach((file) => fs.unlink(file.path, () => undefined));
+        return;
       }
 
       const parsedCategoryId = Number(categoryId);
@@ -336,7 +519,7 @@ app.post('/api/tickets', (req, res) => {
       const newTicket = await prisma.ticket.create({
         data: {
           ticketNumber,
-          requesterId: parsedRequesterId,
+          requesterId: req.auth!.user.id,
           categoryId: parsedCategoryId,
           relatedSystemId: parsedSystemId,
           requestedPriority: priorityUpper as Priority,
@@ -369,7 +552,7 @@ app.post('/api/tickets', (req, res) => {
 });
 
 // POST /api/tickets/:id/attachments — อัปโหลดไฟล์แนบเพิ่มในตั๋วที่มีอยู่
-app.post('/api/tickets/:id/attachments', (req, res) => {
+app.post('/api/tickets/:id/attachments', requireTrustedOrigin, requireAuthentication, requireRequester, (req: AuthenticatedRequest, res) => {
   upload.array('attachments', 5)(req, res, async (err: any) => {
     if (err) {
       if (err instanceof multer.MulterError) {
@@ -382,7 +565,6 @@ app.post('/api/tickets/:id/attachments', (req, res) => {
 
     try {
       const ticketId = Number(req.params.id);
-      const parsedRequesterId = Number(req.body.requesterId);
       const files = (req.files as Express.Multer.File[]) || [];
 
       if (isNaN(ticketId)) {
@@ -399,9 +581,14 @@ app.post('/api/tickets/:id/attachments', (req, res) => {
         return res.status(404).json({ error: 'Ticket not found' });
       }
 
+      if (rejectClientSuppliedRequesterId(req, res)) {
+        files.forEach((file) => fs.unlink(file.path, () => undefined));
+        return;
+      }
+
       // BR-13 Ownership Check: Strict ownership validation first
-      if (!req.body.requesterId || isNaN(parsedRequesterId) || ticket.requesterId !== parsedRequesterId) {
-        return res.status(403).json({ error: 'Access Denied: You do not own this ticket.' });
+      if (ticket.requesterId !== req.auth!.user.id) {
+        return res.status(404).json({ error: 'Ticket not found' });
       }
 
       if (files.length === 0) {
@@ -440,17 +627,14 @@ app.post('/api/tickets/:id/attachments', (req, res) => {
 });
 
 // GET /api/attachments/:id/download — ดาวน์โหลดไฟล์แนบ (BR-12 & BR-13 Check)
-app.get('/api/attachments/:id/download', async (req, res) => {
+app.get('/api/attachments/:id/download', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
     const attachmentId = Number(req.params.id);
-    const requesterId = Number(req.query.requesterId);
 
     if (isNaN(attachmentId)) {
       return res.status(400).json({ error: 'Valid attachment ID is required' });
     }
-    if (!req.query.requesterId || isNaN(requesterId)) {
-      return res.status(400).json({ error: 'requesterId parameter is required' });
-    }
+    if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const attachment = await prisma.attachment.findUnique({
       where: { id: attachmentId },
@@ -462,8 +646,8 @@ app.get('/api/attachments/:id/download', async (req, res) => {
     }
 
     // BR-13 Ownership Check
-    if (attachment.ticket.requesterId !== requesterId) {
-      return res.status(403).json({ error: 'Access Denied: You do not own this attachment.' });
+    if (attachment.ticket.requesterId !== req.auth!.user.id) {
+      return res.status(404).json({ error: 'Attachment not found' });
     }
 
     // BR-12 Soft Removal Check: Block download for soft-removed files
@@ -486,19 +670,16 @@ app.get('/api/attachments/:id/download', async (req, res) => {
 });
 
 // DELETE /api/attachments/:id — Soft-remove attachment with required reason (BR-12)
-app.delete('/api/attachments/:id', async (req, res) => {
+app.delete('/api/attachments/:id', requireTrustedOrigin, requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
     const attachmentId = Number(req.params.id);
-    const { requesterId, removalReason } = req.body;
+    const { removalReason } = req.body;
 
     if (isNaN(attachmentId)) {
       return res.status(400).json({ error: 'Valid attachment ID is required' });
     }
 
-    const parsedRequesterId = Number(requesterId);
-    if (!requesterId || isNaN(parsedRequesterId)) {
-      return res.status(400).json({ error: 'Valid requesterId is required' });
-    }
+    if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const trimmedReason = removalReason ? String(removalReason).trim() : '';
     if (!trimmedReason || trimmedReason.length < 3) {
@@ -515,8 +696,8 @@ app.delete('/api/attachments/:id', async (req, res) => {
     }
 
     // BR-13 Ownership Check
-    if (attachment.ticket.requesterId !== parsedRequesterId) {
-      return res.status(403).json({ error: 'Access Denied: You do not own this attachment.' });
+    if (attachment.ticket.requesterId !== req.auth!.user.id) {
+      return res.status(404).json({ error: 'Attachment not found' });
     }
 
     if (attachment.isRemoved) {

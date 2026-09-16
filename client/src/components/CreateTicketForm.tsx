@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useRequester } from '../context/RequesterContext';
+import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
 
 interface CategoryOption {
   id: number;
@@ -19,7 +20,7 @@ interface CreateTicketFormProps {
 }
 
 export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, onCancel }) => {
-  const { selectedRequester } = useRequester();
+  const { user } = useAuth();
 
   // Form Field States
   const [categoryId, setCategoryId] = useState<string>('');
@@ -46,8 +47,8 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
       setApiError(null);
       try {
         const [catRes, sysRes] = await Promise.all([
-          fetch('http://localhost:5000/api/categories'),
-          fetch('http://localhost:5000/api/related-systems'),
+          apiFetch('/api/categories'),
+          apiFetch('/api/related-systems'),
         ]);
 
         if (!catRes.ok || !sysRes.ok) {
@@ -156,8 +157,8 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
     setApiError(null);
 
     if (!validateForm()) return;
-    if (!selectedRequester) {
-      setApiError('No active Development Requester selected.');
+    if (!user) {
+      setApiError('Your session has expired. Please sign in again.');
       return;
     }
 
@@ -165,7 +166,6 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
 
     try {
       const formData = new FormData();
-      formData.append('requesterId', String(selectedRequester.id));
       formData.append('categoryId', categoryId);
       formData.append('relatedSystemId', relatedSystemId);
       formData.append('requestedPriority', requestedPriority);
@@ -176,7 +176,7 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
         formData.append('attachments', file);
       });
 
-      const res = await fetch('http://localhost:5000/api/tickets', {
+      const res = await apiFetch('/api/tickets', {
         method: 'POST',
         body: formData,
       });
@@ -211,7 +211,7 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ onSuccess, o
     <div style={styles.container}>
       <h2 style={styles.formTitle}>Create IT Support Ticket</h2>
       <p style={styles.formSubtitle}>
-        Fill in the details below to submit a new ticket for <strong>{selectedRequester?.name}</strong>.
+        Fill in the details below to submit a new ticket for <strong>{user?.name}</strong>.
       </p>
 
       {apiError && (

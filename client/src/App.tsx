@@ -1,17 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RequesterProvider, useRequester } from './context/RequesterContext';
-import { Navbar } from './components/Navbar';
-import { RequesterSelector } from './components/RequesterSelector';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Navbar, type NavigationView } from './components/Navbar';
 import { CreateTicketForm } from './components/CreateTicketForm';
 import { MyTicketsList, TicketItem, PaginationMeta } from './components/MyTicketsList';
 import { TicketDetailView, TicketDetailData } from './components/TicketDetailView';
 import { AttachmentSection } from './components/AttachmentSection';
+import { LoginPage } from './components/LoginPage';
+import { ChangePasswordPage } from './components/ChangePasswordPage';
+import { apiFetch } from './lib/api';
 
-type ViewMode = 'my-tickets' | 'create-ticket' | 'select-requester' | 'ticket-detail';
+type ViewMode = NavigationView;
 
 function MainApp() {
-  const { selectedRequester } = useRequester();
+  const { user, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<ViewMode>('my-tickets');
+  const activeView: ViewMode = user?.role === 'IT_STAFF'
+    ? 'staff-queue'
+    : user?.role === 'ADMINISTRATOR'
+      ? 'user-management'
+      : currentView;
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
 
@@ -43,9 +50,10 @@ function MainApp() {
 
   // Fetch Categories for Filter Dropdown
   useEffect(() => {
+    if (!user || user.role !== 'REQUESTER') return;
     const fetchCategories = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/categories');
+        const res = await apiFetch('/api/categories');
         if (res.ok) {
           const data = await res.json();
           setCategories(data);
@@ -55,18 +63,17 @@ function MainApp() {
       }
     };
     fetchCategories();
-  }, []);
+  }, [user]);
 
   // Fetch Owned Tickets for Active Requester (Ownership Isolation)
   const fetchTickets = useCallback(async () => {
-    if (!selectedRequester) return;
+    if (!user || user.role !== 'REQUESTER') return;
 
     setLoadingTickets(true);
     setFetchError(null);
 
     try {
       const params = new URLSearchParams();
-      params.append('requesterId', String(selectedRequester.id));
       if (search.trim()) params.append('search', search.trim());
       if (selectedCategory) params.append('categoryId', selectedCategory);
       if (selectedPriority) params.append('priority', selectedPriority);
@@ -76,7 +83,7 @@ function MainApp() {
       params.append('page', String(page));
       params.append('limit', '10');
 
-      const res = await fetch(`http://localhost:5000/api/tickets?${params.toString()}`);
+      const res = await apiFetch(`/api/tickets?${params.toString()}`);
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.error || `Server responded with ${res.status}`);
@@ -91,17 +98,17 @@ function MainApp() {
     } finally {
       setLoadingTickets(false);
     }
-  }, [selectedRequester, search, selectedCategory, selectedPriority, selectedStatus, sortBy, sortOrder, page]);
+  }, [user, search, selectedCategory, selectedPriority, selectedStatus, sortBy, sortOrder, page]);
 
   // Fetch Ticket Detail with Ownership Validation (BR-13)
   const fetchTicketDetail = useCallback(async (id: number) => {
-    if (!selectedRequester) return;
+    if (!user || user.role !== 'REQUESTER') return;
 
     setLoadingDetail(true);
     setDetailError(null);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/tickets/${id}?requesterId=${selectedRequester.id}`);
+      const res = await apiFetch(`/api/tickets/${id}`);
       const data = await res.json();
 
       if (!res.ok) {
@@ -124,21 +131,21 @@ function MainApp() {
     } finally {
       setLoadingDetail(false);
     }
-  }, [selectedRequester]);
+  }, [user]);
 
-  // Trigger ticket list fetch when parameters or selectedRequester changes
+  // Trigger ticket list fetch when session user changes.
   useEffect(() => {
-    if (selectedRequester && currentView === 'my-tickets') {
+    if (user?.role === 'REQUESTER' && activeView === 'my-tickets') {
       fetchTickets();
     }
-  }, [selectedRequester, currentView, fetchTickets]);
+  }, [user, activeView, fetchTickets]);
 
   // Trigger ticket detail fetch when selectedTicketId or currentView changes
   useEffect(() => {
-    if (selectedRequester && currentView === 'ticket-detail' && selectedTicketId) {
+    if (user?.role === 'REQUESTER' && activeView === 'ticket-detail' && selectedTicketId) {
       fetchTicketDetail(selectedTicketId);
     }
-  }, [selectedRequester, currentView, selectedTicketId, fetchTicketDetail]);
+  }, [user, activeView, selectedTicketId, fetchTicketDetail]);
 
   const handleSelectTicket = (ticketId: number) => {
     setSelectedTicketId(ticketId);
@@ -166,34 +173,16 @@ function MainApp() {
     setPage(1);
   };
 
-  // If no Requester selected, render RequesterSelector
-  if (!selectedRequester || currentView === 'select-requester') {
-    return (
-      <div>
-        <Navbar
-          currentView={currentView}
-          onNavigate={(view) => {
-            setCreatedTicketNumber(null);
-            setSelectedTicketId(null);
-            setCurrentView(view);
-          }}
-        />
-        <RequesterSelector
-          onSuccess={() => {
-            setPage(1);
-            setCurrentView('my-tickets');
-          }}
-        />
-      </div>
-    );
-  }
+  if (isLoading) return <div style={loadingStateStyle}>Restoring your session...</div>;
+  if (!user) return <LoginPage />;
+  if (user.mustChangePassword) return <ChangePasswordPage />;
 
   const hasActiveFilters = Boolean(search || selectedCategory || selectedPriority || selectedStatus);
 
   return (
     <div style={{ backgroundColor: '#F5F7F6', minHeight: '100vh' }}>
       <Navbar
-        currentView={currentView}
+        currentView={activeView}
         onNavigate={(view) => {
           setCreatedTicketNumber(null);
           setSelectedTicketId(null);
@@ -203,7 +192,7 @@ function MainApp() {
 
       <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px' }}>
         {/* 1. My Tickets Screen */}
-        {currentView === 'my-tickets' && (
+        {activeView === 'my-tickets' && (
           <div>
             <div style={headerStyle}>
               <div>
@@ -211,7 +200,7 @@ function MainApp() {
                   My Tickets
                 </h1>
                 <p style={{ color: '#4B5563', margin: '4px 0 0 0', fontSize: '0.875rem' }}>
-                  View and track all IT support tickets submitted by <strong>{selectedRequester.name}</strong>.
+                  View and track all IT support tickets submitted by <strong>{user.name}</strong>.
                 </p>
               </div>
               <button
@@ -322,7 +311,7 @@ function MainApp() {
         )}
 
         {/* 2. Create Ticket Screen */}
-        {currentView === 'create-ticket' && (
+        {activeView === 'create-ticket' && (
           <div>
             {createdTicketNumber ? (
               <div style={{ ...cardStyle, textAlign: 'center', padding: '40px' }}>
@@ -379,7 +368,7 @@ function MainApp() {
         )}
 
         {/* 3. Ticket Detail Screen with Attachment Section */}
-        {currentView === 'ticket-detail' && (
+        {activeView === 'ticket-detail' && (
           <div>
             {loadingDetail ? (
               <div style={loadingStateStyle}>
@@ -415,6 +404,20 @@ function MainApp() {
               </TicketDetailView>
             ) : null}
           </div>
+        )}
+
+        {activeView === 'staff-queue' && (
+          <RolePlaceholder
+            title="Ticket Queue"
+            description="The staff ticket queue will be available in the next Lab 3 workflow issue."
+          />
+        )}
+
+        {activeView === 'user-management' && (
+          <RolePlaceholder
+            title="User Management"
+            description="User management will be available in the next Lab 3 administration issue."
+          />
         )}
       </main>
     </div>
@@ -559,8 +562,18 @@ const emptyIconCircle: React.CSSProperties = {
 
 export default function App() {
   return (
-    <RequesterProvider>
+    <AuthProvider>
       <MainApp />
-    </RequesterProvider>
+    </AuthProvider>
+  );
+}
+
+function RolePlaceholder({ title, description }: { title: string; description: string }) {
+  return (
+    <section style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
+      <h1 style={{ color: '#006B3C', margin: '0 0 10px' }}>{title}</h1>
+      <p style={{ color: '#4B5563', margin: 0 }}>{description}</p>
+      <p style={{ color: '#6B7280', margin: '12px 0 0', fontWeight: 600 }}>Coming soon</p>
+    </section>
   );
 }

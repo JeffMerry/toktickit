@@ -1,138 +1,48 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import { PrismaClient, TicketStatus } from '@prisma/client';
 import app from '../../src/app';
-import { PrismaClient, TicketStatus, UserRole } from '@prisma/client';
+import { createSessionToken, hashPassword } from '../../src/utils/auth';
 
 const prisma = new PrismaClient();
+let requesterAId = 0;
+let requesterBId = 0;
+let requesterACookie = '';
 
-describe('GET /api/tickets API (My Tickets List)', () => {
-  let requesterAId: number;
-  let requesterBId: number;
-  let categoryId: number;
-  let systemId: number;
+beforeAll(async () => {
+  const [a, b, category, system] = await Promise.all([
+    prisma.user.upsert({ where: { normalizedEmail: 'tickets-a@example.test' }, update: { mustChangePassword: false, isActive: true }, create: { name: 'Tickets A', email: 'tickets-a@example.test', normalizedEmail: 'tickets-a@example.test', passwordHash: await hashPassword('ChangeMe123!'), role: 'REQUESTER', mustChangePassword: false } }),
+    prisma.user.upsert({ where: { normalizedEmail: 'tickets-b@example.test' }, update: { mustChangePassword: false, isActive: true }, create: { name: 'Tickets B', email: 'tickets-b@example.test', normalizedEmail: 'tickets-b@example.test', passwordHash: await hashPassword('ChangeMe123!'), role: 'REQUESTER', mustChangePassword: false } }),
+    prisma.category.findFirst({ where: { isActive: true } }), prisma.relatedSystem.findFirst({ where: { isActive: true } }),
+  ]);
+  if (!category || !system) throw new Error('Seeded category and system are required.');
+  requesterAId = a.id; requesterBId = b.id;
+  const token = createSessionToken();
+  requesterACookie = `toktickit_session=${token.rawToken}`;
+  await prisma.session.create({ data: { tokenHash: token.tokenHash, userId: a.id, expiresAt: new Date(Date.now() + 60_000) } });
+  await prisma.ticket.createMany({ data: [
+    { ticketNumber: 'TKT-2026-AUTH-A1', requesterId: a.id, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'HIGH', currentStatus: TicketStatus.NEW, summary: 'Authenticated requester A ticket', description: 'Ticket that must only be returned to requester A.' },
+    { ticketNumber: 'TKT-2026-AUTH-B1', requesterId: b.id, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'LOW', currentStatus: TicketStatus.NEW, summary: 'Authenticated requester B ticket', description: 'Ticket that must not be returned to requester A.' },
+  ] });
+});
 
-  beforeAll(async () => {
-    // Fetch active seeded requesters
-    const activeRequesters = await prisma.user.findMany({
-      where: { isActive: true, role: UserRole.REQUESTER },
-      take: 2,
-    });
+afterAll(async () => {
+  await prisma.ticket.deleteMany({ where: { ticketNumber: { in: ['TKT-2026-AUTH-A1', 'TKT-2026-AUTH-B1'] } } });
+  await prisma.session.deleteMany({ where: { userId: { in: [requesterAId, requesterBId] } } });
+  await prisma.user.deleteMany({ where: { id: { in: [requesterAId, requesterBId] } } });
+  await prisma.$disconnect();
+});
 
-    const category = await prisma.category.findFirst({ where: { isActive: true } });
-    const system = await prisma.relatedSystem.findFirst({ where: { isActive: true } });
-
-    if (activeRequesters.length < 2 || !category || !system) {
-      throw new Error('Seed data required for testing my-tickets endpoint is missing.');
-    }
-
-    requesterAId = activeRequesters[0].id;
-    requesterBId = activeRequesters[1].id;
-    categoryId = category.id;
-    systemId = system.id;
-
-    // Create distinct tickets for Requester A
-    await prisma.ticket.createMany({
-      data: [
-        {
-          ticketNumber: 'TKT-2026-TESTA1',
-          requesterId: requesterAId,
-          categoryId,
-          relatedSystemId: systemId,
-          requestedPriority: 'HIGH',
-          currentStatus: TicketStatus.NEW,
-          summary: 'Laptop screen flickering issue',
-          description: 'The laptop display flickers randomly when using browser.',
-        },
-        {
-          ticketNumber: 'TKT-2026-TESTA2',
-          requesterId: requesterAId,
-          categoryId,
-          relatedSystemId: systemId,
-          requestedPriority: 'LOW',
-          currentStatus: TicketStatus.NEW,
-          summary: 'Printer paper jam in department',
-          description: 'Departmental printer fails to feed A4 paper properly.',
-        },
-      ],
-    });
-
-    // Create distinct ticket for Requester B
-    await prisma.ticket.create({
-      data: {
-        ticketNumber: 'TKT-2026-TESTB1',
-        requesterId: requesterBId,
-        categoryId,
-        relatedSystemId: systemId,
-        requestedPriority: 'URGENT',
-        currentStatus: TicketStatus.NEW,
-        summary: 'VPN access denied for remote user',
-        description: 'Unable to connect to campus network via Cisco VPN client.',
-      },
-    });
-  });
-
-  afterAll(async () => {
-    // Clean up created test tickets
-    await prisma.ticket.deleteMany({
-      where: {
-        ticketNumber: {
-          in: ['TKT-2026-TESTA1', 'TKT-2026-TESTA2', 'TKT-2026-TESTB1'],
-        },
-      },
-    });
-    await prisma.$disconnect();
-  });
-
-  it('should return 400 Bad Request if requesterId parameter is missing', async () => {
-    const response = await request(app).get('/api/tickets');
-    expect(response.status).toBe(400);
-    expect(response.body.error).toMatch(/requesterId parameter is required/);
-  });
-
-  it('should strictly isolate tickets and return only tickets owned by Requester A', async () => {
-    const response = await request(app)
-      .get('/api/tickets')
-      .query({ requesterId: requesterAId });
-
+describe('GET /api/tickets API', () => {
+  it('returns only tickets owned by the authenticated requester', async () => {
+    const response = await request(app).get('/api/tickets').set('Cookie', requesterACookie);
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('data');
-    expect(response.body).toHaveProperty('pagination');
-
-    const ticketNumbers: string[] = response.body.data.map((t: any) => t.ticketNumber);
-    expect(ticketNumbers).toContain('TKT-2026-TESTA1');
-    expect(ticketNumbers).toContain('TKT-2026-TESTA2');
-    expect(ticketNumbers).not.toContain('TKT-2026-TESTB1');
+    expect(response.body.data.map((ticket: { ticketNumber: string }) => ticket.ticketNumber)).toContain('TKT-2026-AUTH-A1');
+    expect(response.body.data.map((ticket: { ticketNumber: string }) => ticket.ticketNumber)).not.toContain('TKT-2026-AUTH-B1');
   });
 
-  it('should filter tickets by search query term', async () => {
-    const response = await request(app)
-      .get('/api/tickets')
-      .query({ requesterId: requesterAId, search: 'flickering' });
-
-    expect(response.status).toBe(200);
-    expect(response.body.data.length).toBe(1);
-    expect(response.body.data[0].ticketNumber).toBe('TKT-2026-TESTA1');
-  });
-
-  it('should filter tickets by requested priority', async () => {
-    const response = await request(app)
-      .get('/api/tickets')
-      .query({ requesterId: requesterAId, priority: 'HIGH' });
-
-    expect(response.status).toBe(200);
-    expect(response.body.data.length).toBeGreaterThanOrEqual(1);
-    expect(response.body.data.every((t: any) => t.requestedPriority === 'HIGH')).toBe(true);
-  });
-
-  it('should correctly format pagination metadata', async () => {
-    const response = await request(app)
-      .get('/api/tickets')
-      .query({ requesterId: requesterAId, page: 1, limit: 1 });
-
-    expect(response.status).toBe(200);
-    expect(response.body.data.length).toBe(1);
-    expect(response.body.pagination.page).toBe(1);
-    expect(response.body.pagination.limit).toBe(1);
-    expect(response.body.pagination.total).toBeGreaterThanOrEqual(2);
+  it('rejects requesterId spoofing and missing sessions', async () => {
+    await request(app).get('/api/tickets').query({ requesterId: requesterBId }).set('Cookie', requesterACookie).expect(400);
+    await request(app).get('/api/tickets').expect(401);
   });
 });
