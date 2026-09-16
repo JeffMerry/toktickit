@@ -7,6 +7,7 @@ import { TicketDetailView, TicketDetailData } from './components/TicketDetailVie
 import { AttachmentSection } from './components/AttachmentSection';
 import { LoginPage } from './components/LoginPage';
 import { ChangePasswordPage } from './components/ChangePasswordPage';
+import { StaffTicketQueue } from './components/StaffTicketQueue';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
@@ -407,10 +408,7 @@ function MainApp() {
         )}
 
         {activeView === 'staff-queue' && (
-          <RolePlaceholder
-            title="Ticket Queue"
-            description="The staff ticket queue will be available in the next Lab 3 workflow issue."
-          />
+          <StaffTicketQueue />
         )}
 
         {activeView === 'user-management' && (
