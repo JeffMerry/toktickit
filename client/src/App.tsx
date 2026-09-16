@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Navbar } from './components/Navbar';
+import { Navbar, type NavigationView } from './components/Navbar';
 import { CreateTicketForm } from './components/CreateTicketForm';
 import { MyTicketsList, TicketItem, PaginationMeta } from './components/MyTicketsList';
 import { TicketDetailView, TicketDetailData } from './components/TicketDetailView';
@@ -9,11 +9,16 @@ import { LoginPage } from './components/LoginPage';
 import { ChangePasswordPage } from './components/ChangePasswordPage';
 import { apiFetch } from './lib/api';
 
-type ViewMode = 'my-tickets' | 'create-ticket' | 'ticket-detail';
+type ViewMode = NavigationView;
 
 function MainApp() {
   const { user, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<ViewMode>('my-tickets');
+  const activeView: ViewMode = user?.role === 'IT_STAFF'
+    ? 'staff-queue'
+    : user?.role === 'ADMINISTRATOR'
+      ? 'user-management'
+      : currentView;
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
 
@@ -45,7 +50,7 @@ function MainApp() {
 
   // Fetch Categories for Filter Dropdown
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role !== 'REQUESTER') return;
     const fetchCategories = async () => {
       try {
         const res = await apiFetch('/api/categories');
@@ -62,7 +67,7 @@ function MainApp() {
 
   // Fetch Owned Tickets for Active Requester (Ownership Isolation)
   const fetchTickets = useCallback(async () => {
-    if (!user) return;
+    if (!user || user.role !== 'REQUESTER') return;
 
     setLoadingTickets(true);
     setFetchError(null);
@@ -97,7 +102,7 @@ function MainApp() {
 
   // Fetch Ticket Detail with Ownership Validation (BR-13)
   const fetchTicketDetail = useCallback(async (id: number) => {
-    if (!user) return;
+    if (!user || user.role !== 'REQUESTER') return;
 
     setLoadingDetail(true);
     setDetailError(null);
@@ -130,17 +135,17 @@ function MainApp() {
 
   // Trigger ticket list fetch when session user changes.
   useEffect(() => {
-    if (user && currentView === 'my-tickets') {
+    if (user?.role === 'REQUESTER' && activeView === 'my-tickets') {
       fetchTickets();
     }
-  }, [user, currentView, fetchTickets]);
+  }, [user, activeView, fetchTickets]);
 
   // Trigger ticket detail fetch when selectedTicketId or currentView changes
   useEffect(() => {
-    if (user && currentView === 'ticket-detail' && selectedTicketId) {
+    if (user?.role === 'REQUESTER' && activeView === 'ticket-detail' && selectedTicketId) {
       fetchTicketDetail(selectedTicketId);
     }
-  }, [user, currentView, selectedTicketId, fetchTicketDetail]);
+  }, [user, activeView, selectedTicketId, fetchTicketDetail]);
 
   const handleSelectTicket = (ticketId: number) => {
     setSelectedTicketId(ticketId);
@@ -177,7 +182,7 @@ function MainApp() {
   return (
     <div style={{ backgroundColor: '#F5F7F6', minHeight: '100vh' }}>
       <Navbar
-        currentView={currentView}
+        currentView={activeView}
         onNavigate={(view) => {
           setCreatedTicketNumber(null);
           setSelectedTicketId(null);
@@ -187,7 +192,7 @@ function MainApp() {
 
       <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px' }}>
         {/* 1. My Tickets Screen */}
-        {currentView === 'my-tickets' && (
+        {activeView === 'my-tickets' && (
           <div>
             <div style={headerStyle}>
               <div>
@@ -306,7 +311,7 @@ function MainApp() {
         )}
 
         {/* 2. Create Ticket Screen */}
-        {currentView === 'create-ticket' && (
+        {activeView === 'create-ticket' && (
           <div>
             {createdTicketNumber ? (
               <div style={{ ...cardStyle, textAlign: 'center', padding: '40px' }}>
@@ -363,7 +368,7 @@ function MainApp() {
         )}
 
         {/* 3. Ticket Detail Screen with Attachment Section */}
-        {currentView === 'ticket-detail' && (
+        {activeView === 'ticket-detail' && (
           <div>
             {loadingDetail ? (
               <div style={loadingStateStyle}>
@@ -399,6 +404,20 @@ function MainApp() {
               </TicketDetailView>
             ) : null}
           </div>
+        )}
+
+        {activeView === 'staff-queue' && (
+          <RolePlaceholder
+            title="Ticket Queue"
+            description="The staff ticket queue will be available in the next Lab 3 workflow issue."
+          />
+        )}
+
+        {activeView === 'user-management' && (
+          <RolePlaceholder
+            title="User Management"
+            description="User management will be available in the next Lab 3 administration issue."
+          />
         )}
       </main>
     </div>
@@ -546,5 +565,15 @@ export default function App() {
     <AuthProvider>
       <MainApp />
     </AuthProvider>
+  );
+}
+
+function RolePlaceholder({ title, description }: { title: string; description: string }) {
+  return (
+    <section style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
+      <h1 style={{ color: '#006B3C', margin: '0 0 10px' }}>{title}</h1>
+      <p style={{ color: '#4B5563', margin: 0 }}>{description}</p>
+      <p style={{ color: '#6B7280', margin: '12px 0 0', fontWeight: 600 }}>Coming soon</p>
+    </section>
   );
 }

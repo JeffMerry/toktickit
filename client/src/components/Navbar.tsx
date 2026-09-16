@@ -1,21 +1,40 @@
 import React from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, type UserRole } from '../context/AuthContext';
+
+export type NavigationView = 'my-tickets' | 'create-ticket' | 'ticket-detail' | 'staff-queue' | 'user-management';
+
+type NavigationItem = { view: NavigationView; label: string };
+
+export function navigationForRole(role: UserRole): NavigationItem[] {
+  if (role === 'REQUESTER') {
+    return [
+      { view: 'my-tickets', label: 'My Tickets' },
+      { view: 'create-ticket', label: 'Create Ticket' },
+    ];
+  }
+  if (role === 'IT_STAFF') return [{ view: 'staff-queue', label: 'Ticket Queue' }];
+  return [{ view: 'user-management', label: 'User Management' }];
+}
 
 interface NavbarProps {
-  currentView: 'my-tickets' | 'create-ticket' | 'ticket-detail';
-  onNavigate: (view: 'my-tickets' | 'create-ticket') => void;
+  currentView: NavigationView;
+  onNavigate: (view: NavigationView) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
   const { user, logout } = useAuth();
+  const navigationItems = user ? navigationForRole(user.role) : [];
 
   return (
     <header style={styles.header}>
       <div style={styles.container}>
-        <button type="button" style={styles.brand} onClick={() => onNavigate('my-tickets')}>TokTickIT</button>
+        <button type="button" style={styles.brand} onClick={() => onNavigate(navigationItems[0]?.view ?? 'my-tickets')}>TokTickIT</button>
         <nav style={styles.navLinks} aria-label="Main navigation">
-          <button type="button" onClick={() => onNavigate('my-tickets')} style={{ ...styles.navBtn, ...(currentView !== 'create-ticket' ? styles.activeNavBtn : {}) }}>My Tickets</button>
-          <button type="button" onClick={() => onNavigate('create-ticket')} style={{ ...styles.navBtn, ...(currentView === 'create-ticket' ? styles.activeNavBtn : {}) }}>Create Ticket</button>
+          {navigationItems.map((item) => (
+            <button key={item.view} type="button" onClick={() => onNavigate(item.view)} style={{ ...styles.navBtn, ...(currentView === item.view || (item.view === 'my-tickets' && currentView === 'ticket-detail') ? styles.activeNavBtn : {}) }}>
+              {item.label}
+            </button>
+          ))}
         </nav>
         {user && (
           <div style={styles.userBadge}>
