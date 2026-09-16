@@ -93,6 +93,25 @@ async function requireAuthentication(req: AuthenticatedRequest, res: Response, n
   }
 }
 
+function requireRequester(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.auth) return res.status(401).json({ error: 'Authentication is required.' });
+  if (req.auth.user.mustChangePassword) {
+    return res.status(403).json({ error: 'Password change is required before accessing this resource.' });
+  }
+  if (req.auth.user.role !== 'REQUESTER') {
+    return res.status(403).json({ error: 'Requester access is required.' });
+  }
+  next();
+}
+
+function rejectClientSuppliedRequesterId(req: Request, res: Response): boolean {
+  const hasRequesterId = Object.prototype.hasOwnProperty.call(req.query || {}, 'requesterId')
+    || Object.prototype.hasOwnProperty.call(req.body || {}, 'requesterId');
+  if (!hasRequesterId) return false;
+  res.status(400).json({ error: 'Client-supplied requesterId is not allowed.' });
+  return true;
+}
+
 const legacyStatusMap: Record<string, TicketStatus> = {
   NEW: 'NEW',
   OPEN: 'OPEN',
@@ -300,17 +319,13 @@ app.get('/api/related-systems', async (req, res) => {
 });
 
 // GET /api/tickets — ดึงรายการตั๋วของผู้แจ้งซ่อม (Ownership Isolation, Search, Filter, Sort, Pagination)
-app.get('/api/tickets', async (req, res) => {
+app.get('/api/tickets', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
-    const { requesterId, search, categoryId, priority, status, sortBy, sortOrder, page, limit } = req.query;
-
-    const parsedRequesterId = Number(requesterId);
-    if (!requesterId || isNaN(parsedRequesterId)) {
-      return res.status(400).json({ error: 'requesterId parameter is required and must be a valid number' });
-    }
+    const { search, categoryId, priority, status, sortBy, sortOrder, page, limit } = req.query;
+    if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const where: Prisma.TicketWhereInput = {
-      requesterId: parsedRequesterId,
+      requesterId: req.auth!.user.id,
     };
 
     if (search && typeof search === 'string' && search.trim() !== '') {
@@ -384,17 +399,14 @@ app.get('/api/tickets', async (req, res) => {
 });
 
 // GET /api/tickets/:id — ดึงรายละเอียดตั๋วรายใบ (Ownership Check / BR-13)
-app.get('/api/tickets/:id', async (req, res) => {
+app.get('/api/tickets/:id', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
     const ticketId = Number(req.params.id);
-    const requesterId = Number(req.query.requesterId);
 
     if (isNaN(ticketId)) {
       return res.status(400).json({ error: 'Valid ticket ID is required' });
     }
-    if (!req.query.requesterId || isNaN(requesterId)) {
-      return res.status(400).json({ error: 'requesterId parameter is required' });
-    }
+    if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -413,8 +425,8 @@ app.get('/api/tickets/:id', async (req, res) => {
     }
 
     // BR-13 Ownership Check: Strict access control
-    if (ticket.requesterId !== requesterId) {
-      return res.status(403).json({ error: 'Access Denied: You do not have permission to view this ticket.' });
+    if (ticket.requesterId !== req.auth!.user.id) {
+      return res.status(404).json({ error: 'Ticket not found' });
     }
 
     res.json(ticket);
@@ -425,7 +437,7 @@ app.get('/api/tickets/:id', async (req, res) => {
 });
 
 // POST /api/tickets — สร้างตั๋วใหม่พร้อมไฟล์แนบ
-app.post('/api/tickets', (req, res) => {
+app.post('/api/tickets', requireTrustedOrigin, requireAuthentication, requireRequester, (req: AuthenticatedRequest, res) => {
   upload.array('attachments', 5)(req, res, async (err: any) => {
     if (err) {
       if (err instanceof multer.MulterError) {
@@ -440,18 +452,11 @@ app.post('/api/tickets', (req, res) => {
     }
 
     try {
-      const { requesterId, categoryId, relatedSystemId, requestedPriority, summary, description } = req.body;
+      const { categoryId, relatedSystemId, requestedPriority, summary, description } = req.body;
       const files = (req.files as Express.Multer.File[]) || [];
-
-      const parsedRequesterId = Number(requesterId);
-      if (!requesterId || isNaN(parsedRequesterId)) {
-        return res.status(400).json({ error: 'Valid Requester ID is required' });
-      }
-      const requester = await prisma.user.findFirst({
-        where: { id: parsedRequesterId, isActive: true, role: 'REQUESTER' },
-      });
-      if (!requester) {
-        return res.status(400).json({ error: 'Active Requester not found' });
+      if (rejectClientSuppliedRequesterId(req, res)) {
+        files.forEach((file) => fs.unlink(file.path, () => undefined));
+        return;
       }
 
       const parsedCategoryId = Number(categoryId);
@@ -497,7 +502,7 @@ app.post('/api/tickets', (req, res) => {
       const newTicket = await prisma.ticket.create({
         data: {
           ticketNumber,
-          requesterId: parsedRequesterId,
+          requesterId: req.auth!.user.id,
           categoryId: parsedCategoryId,
           relatedSystemId: parsedSystemId,
           requestedPriority: priorityUpper as Priority,
@@ -530,7 +535,7 @@ app.post('/api/tickets', (req, res) => {
 });
 
 // POST /api/tickets/:id/attachments — อัปโหลดไฟล์แนบเพิ่มในตั๋วที่มีอยู่
-app.post('/api/tickets/:id/attachments', (req, res) => {
+app.post('/api/tickets/:id/attachments', requireTrustedOrigin, requireAuthentication, requireRequester, (req: AuthenticatedRequest, res) => {
   upload.array('attachments', 5)(req, res, async (err: any) => {
     if (err) {
       if (err instanceof multer.MulterError) {
@@ -543,7 +548,6 @@ app.post('/api/tickets/:id/attachments', (req, res) => {
 
     try {
       const ticketId = Number(req.params.id);
-      const parsedRequesterId = Number(req.body.requesterId);
       const files = (req.files as Express.Multer.File[]) || [];
 
       if (isNaN(ticketId)) {
@@ -560,9 +564,14 @@ app.post('/api/tickets/:id/attachments', (req, res) => {
         return res.status(404).json({ error: 'Ticket not found' });
       }
 
+      if (rejectClientSuppliedRequesterId(req, res)) {
+        files.forEach((file) => fs.unlink(file.path, () => undefined));
+        return;
+      }
+
       // BR-13 Ownership Check: Strict ownership validation first
-      if (!req.body.requesterId || isNaN(parsedRequesterId) || ticket.requesterId !== parsedRequesterId) {
-        return res.status(403).json({ error: 'Access Denied: You do not own this ticket.' });
+      if (ticket.requesterId !== req.auth!.user.id) {
+        return res.status(404).json({ error: 'Ticket not found' });
       }
 
       if (files.length === 0) {
@@ -601,17 +610,14 @@ app.post('/api/tickets/:id/attachments', (req, res) => {
 });
 
 // GET /api/attachments/:id/download — ดาวน์โหลดไฟล์แนบ (BR-12 & BR-13 Check)
-app.get('/api/attachments/:id/download', async (req, res) => {
+app.get('/api/attachments/:id/download', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
     const attachmentId = Number(req.params.id);
-    const requesterId = Number(req.query.requesterId);
 
     if (isNaN(attachmentId)) {
       return res.status(400).json({ error: 'Valid attachment ID is required' });
     }
-    if (!req.query.requesterId || isNaN(requesterId)) {
-      return res.status(400).json({ error: 'requesterId parameter is required' });
-    }
+    if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const attachment = await prisma.attachment.findUnique({
       where: { id: attachmentId },
@@ -623,8 +629,8 @@ app.get('/api/attachments/:id/download', async (req, res) => {
     }
 
     // BR-13 Ownership Check
-    if (attachment.ticket.requesterId !== requesterId) {
-      return res.status(403).json({ error: 'Access Denied: You do not own this attachment.' });
+    if (attachment.ticket.requesterId !== req.auth!.user.id) {
+      return res.status(404).json({ error: 'Attachment not found' });
     }
 
     // BR-12 Soft Removal Check: Block download for soft-removed files
@@ -647,19 +653,16 @@ app.get('/api/attachments/:id/download', async (req, res) => {
 });
 
 // DELETE /api/attachments/:id — Soft-remove attachment with required reason (BR-12)
-app.delete('/api/attachments/:id', async (req, res) => {
+app.delete('/api/attachments/:id', requireTrustedOrigin, requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
     const attachmentId = Number(req.params.id);
-    const { requesterId, removalReason } = req.body;
+    const { removalReason } = req.body;
 
     if (isNaN(attachmentId)) {
       return res.status(400).json({ error: 'Valid attachment ID is required' });
     }
 
-    const parsedRequesterId = Number(requesterId);
-    if (!requesterId || isNaN(parsedRequesterId)) {
-      return res.status(400).json({ error: 'Valid requesterId is required' });
-    }
+    if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const trimmedReason = removalReason ? String(removalReason).trim() : '';
     if (!trimmedReason || trimmedReason.length < 3) {
@@ -676,8 +679,8 @@ app.delete('/api/attachments/:id', async (req, res) => {
     }
 
     // BR-13 Ownership Check
-    if (attachment.ticket.requesterId !== parsedRequesterId) {
-      return res.status(403).json({ error: 'Access Denied: You do not own this attachment.' });
+    if (attachment.ticket.requesterId !== req.auth!.user.id) {
+      return res.status(404).json({ error: 'Attachment not found' });
     }
 
     if (attachment.isRemoved) {

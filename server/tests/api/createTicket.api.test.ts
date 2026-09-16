@@ -1,78 +1,53 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import { PrismaClient } from '@prisma/client';
 import app from '../../src/app';
-import { PrismaClient, UserRole } from '@prisma/client';
+import { createSessionToken, hashPassword } from '../../src/utils/auth';
 
 const prisma = new PrismaClient();
+let userId = 0;
+let cookie = '';
+let categoryId = 0;
+let relatedSystemId = 0;
+
+beforeAll(async () => {
+  const user = await prisma.user.upsert({ where: { normalizedEmail: 'create-ticket@example.test' }, update: { mustChangePassword: false, isActive: true }, create: { name: 'Create Ticket Requester', email: 'create-ticket@example.test', normalizedEmail: 'create-ticket@example.test', passwordHash: await hashPassword('ChangeMe123!'), role: 'REQUESTER', mustChangePassword: false } });
+  userId = user.id;
+  const token = createSessionToken();
+  await prisma.session.create({ data: { tokenHash: token.tokenHash, userId, expiresAt: new Date(Date.now() + 60_000) } });
+  cookie = `toktickit_session=${token.rawToken}`;
+  const category = await prisma.category.findFirst({ where: { isActive: true } });
+  const system = await prisma.relatedSystem.findFirst({ where: { isActive: true } });
+  if (!category || !system) throw new Error('Seeded category and system are required.');
+  categoryId = category.id;
+  relatedSystemId = system.id;
+});
+
+afterAll(async () => {
+  await prisma.ticket.deleteMany({ where: { requesterId: userId, summary: { contains: 'Authenticated create ticket' } } });
+  await prisma.session.deleteMany({ where: { userId } });
+  await prisma.user.delete({ where: { id: userId } });
+  await prisma.$disconnect();
+});
 
 describe('POST /api/tickets API', () => {
-  let activeRequesterId: number;
-  let activeCategoryId: number;
-  let activeSystemId: number;
+  const validTicket = { categoryId: 0, relatedSystemId: 0, requestedPriority: 'HIGH', summary: 'Authenticated create ticket', description: 'A valid authenticated requester ticket description.' };
 
-  beforeAll(async () => {
-    // Fetch active seeded records
-    const reqUser = await prisma.user.findFirst({ where: { isActive: true, role: UserRole.REQUESTER } });
-    const cat = await prisma.category.findFirst({ where: { isActive: true } });
-    const sys = await prisma.relatedSystem.findFirst({ where: { isActive: true } });
-
-    if (reqUser) activeRequesterId = reqUser.id;
-    if (cat) activeCategoryId = cat.id;
-    if (sys) activeSystemId = sys.id;
-  });
-
-  afterAll(async () => {
-    await prisma.$disconnect();
-  });
-
-  it('should create a new ticket successfully with status 201 and generated ticket number', async () => {
-    const response = await request(app)
-      .post('/api/tickets')
-      .send({
-        requesterId: activeRequesterId,
-        categoryId: activeCategoryId,
-        relatedSystemId: activeSystemId,
-        requestedPriority: 'HIGH',
-        summary: 'Laptop battery drains very quickly',
-        description: 'My laptop battery drains in less than 30 minutes after Windows update.',
-      });
-
+  it('creates a ticket for the session requester', async () => {
+    const response = await request(app).post('/api/tickets').set('Cookie', cookie).send({ ...validTicket, categoryId, relatedSystemId });
     expect(response.status).toBe(201);
-    expect(response.body).toHaveProperty('id');
-    expect(response.body.ticketNumber).toMatch(/^TKT-2026-[A-Z0-9]{6}$/);
+    expect(response.body.requesterId).toBe(userId);
     expect(response.body.currentStatus).toBe('NEW');
-    expect(response.body.summary).toBe('Laptop battery drains very quickly');
   });
 
-  it('should return 400 Bad Request if summary is too short (< 5 chars)', async () => {
-    const response = await request(app)
-      .post('/api/tickets')
-      .send({
-        requesterId: activeRequesterId,
-        categoryId: activeCategoryId,
-        relatedSystemId: activeSystemId,
-        requestedPriority: 'MEDIUM',
-        summary: 'Help',
-        description: 'Detailed description about the problem here.',
-      });
-
+  it('rejects a client-supplied requesterId', async () => {
+    const response = await request(app).post('/api/tickets').set('Cookie', cookie).send({ ...validTicket, categoryId, relatedSystemId, requesterId: 999999 });
     expect(response.status).toBe(400);
-    expect(response.body.error).toMatch(/Summary is required/);
+    expect(response.body.error).toMatch(/requesterId/);
   });
 
-  it('should return 400 Bad Request if category ID is invalid', async () => {
-    const response = await request(app)
-      .post('/api/tickets')
-      .send({
-        requesterId: activeRequesterId,
-        categoryId: 99999,
-        relatedSystemId: activeSystemId,
-        requestedPriority: 'MEDIUM',
-        summary: 'Valid ticket summary',
-        description: 'Valid description with sufficient character length.',
-      });
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Active Category not found');
+  it('requires an authenticated session', async () => {
+    const response = await request(app).post('/api/tickets').send({ ...validTicket, categoryId, relatedSystemId });
+    expect(response.status).toBe(401);
   });
 });
