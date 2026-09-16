@@ -17,7 +17,7 @@ import {
   validatePassword,
   verifyPassword,
 } from './utils/auth';
-import { operationalAccessError } from './utils/staffAuthorization';
+import { isOperationalRole, operationalAccessError } from './utils/staffAuthorization';
 import {
   allowedNextStatuses,
   isAllowedStatusTransition,
@@ -119,6 +119,13 @@ function requireOperationalUser(req: AuthenticatedRequest, res: Response, next: 
   const error = operationalAccessError(req.auth.user);
   if (error) return res.status(403).json({ error });
   next();
+}
+
+async function canAccessTicketDiscussion(req: AuthenticatedRequest, ticketId: number): Promise<boolean> {
+  if (!req.auth || req.auth.user.mustChangePassword) return false;
+  if (isOperationalRole(req.auth.user.role)) return true;
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { requesterId: true } });
+  return ticket?.requesterId === req.auth.user.id;
 }
 
 function rejectClientSuppliedRequesterId(req: Request, res: Response): boolean {
@@ -606,6 +613,73 @@ app.patch('/api/staff/tickets/:id/status', requireTrustedOrigin, requireAuthenti
     console.error('Error updating ticket status:', error);
     return res.status(500).json({ error: 'Failed to update ticket status.' });
   }
+});
+
+// GET /api/tickets/:id/public-comments — requester owner and operational users only
+app.get('/api/tickets/:id/public-comments', requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (req.auth!.user.mustChangePassword) return res.status(403).json({ error: 'Password change is required before accessing this resource.' });
+    if (!(await canAccessTicketDiscussion(req, ticketId))) return res.status(404).json({ error: 'Ticket not found.' });
+    const comments = await prisma.publicComment.findMany({
+      where: { ticketId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } },
+    });
+    return res.json(comments);
+  } catch (error) {
+    console.error('Error fetching public comments:', error);
+    return res.status(500).json({ error: 'Failed to fetch public comments.' });
+  }
+});
+
+// POST /api/tickets/:id/public-comments — append-only shared discussion
+app.post('/api/tickets/:id/public-comments', requireTrustedOrigin, requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!content || content.length > 2000) return res.status(400).json({ error: 'Comment must contain 1 to 2,000 characters.' });
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (req.auth!.user.mustChangePassword) return res.status(403).json({ error: 'Password change is required before accessing this resource.' });
+    if (!(await canAccessTicketDiscussion(req, ticketId))) return res.status(404).json({ error: 'Ticket not found.' });
+    const comment = await prisma.publicComment.create({
+      data: { ticketId, authorId: req.auth!.user.id, content },
+      include: { author: { select: { id: true, name: true, role: true } } },
+    });
+    return res.status(201).json(comment);
+  } catch (error) {
+    console.error('Error creating public comment:', error);
+    return res.status(500).json({ error: 'Failed to create public comment.' });
+  }
+});
+
+// GET/POST /api/staff/tickets/:id/internal-notes — append-only operational collaboration
+app.get('/api/staff/tickets/:id/internal-notes', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+  const notes = await prisma.internalNote.findMany({
+    where: { ticketId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } },
+  });
+  return res.json(notes);
+});
+
+app.post('/api/staff/tickets/:id/internal-notes', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!content || content.length > 4000) return res.status(400).json({ error: 'Internal note must contain 1 to 4,000 characters.' });
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+  const note = await prisma.internalNote.create({
+    data: { ticketId, authorId: req.auth!.user.id, content },
+    include: { author: { select: { id: true, name: true, role: true } } },
+  });
+  return res.status(201).json(note);
 });
 
 // GET /api/tickets — ดึงรายการตั๋วของผู้แจ้งซ่อม (Ownership Isolation, Search, Filter, Sort, Pagination)

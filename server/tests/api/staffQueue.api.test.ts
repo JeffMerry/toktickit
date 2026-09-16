@@ -151,4 +151,26 @@ describe('staff ticket queue API', () => {
     expect(updated.status).toBe(200);
     expect(updated.body.currentStatus).toBe('RESOLVED');
   });
+
+  it('keeps public comments shared while internal notes stay operational-only', async () => {
+    const requesterComment = await request(app)
+      .post(`/api/tickets/${queueTicketId}/public-comments`)
+      .set('Cookie', requesterCookie)
+      .send({ content: 'Requester follow-up comment.' });
+    expect(requesterComment.status).toBe(201);
+    expect(requesterComment.body.author).toMatchObject({ id: userIds[2], role: 'REQUESTER' });
+
+    const comments = await request(app).get(`/api/tickets/${queueTicketId}/public-comments`).set('Cookie', staffCookie);
+    expect(comments.status).toBe(200);
+    expect(comments.body).toEqual(expect.arrayContaining([expect.objectContaining({ content: 'Requester follow-up comment.' })]));
+
+    const note = await request(app)
+      .post(`/api/staff/tickets/${queueTicketId}/internal-notes`)
+      .set('Cookie', staffCookie)
+      .send({ content: 'Staff-only investigation update.' });
+    expect(note.status).toBe(201);
+    expect(note.body.author).toMatchObject({ id: userIds[0], role: 'IT_STAFF' });
+
+    await request(app).get(`/api/staff/tickets/${queueTicketId}/internal-notes`).set('Cookie', requesterCookie).expect(403);
+  });
 });
