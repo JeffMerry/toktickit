@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth, type UserRole } from '../context/AuthContext';
 
-export type NavigationView = 'my-tickets' | 'create-ticket' | 'ticket-detail' | 'staff-queue' | 'user-management';
+export type NavigationView = 'my-tickets' | 'create-ticket' | 'ticket-detail' | 'staff-queue' | 'staff-ticket-detail' | 'user-management';
 
 type NavigationItem = { view: NavigationView; label: string };
 
@@ -31,7 +31,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
         <button type="button" style={styles.brand} onClick={() => onNavigate(navigationItems[0]?.view ?? 'my-tickets')}>TokTickIT</button>
         <nav style={styles.navLinks} aria-label="Main navigation">
           {navigationItems.map((item) => (
-            <button key={item.view} type="button" onClick={() => onNavigate(item.view)} style={{ ...styles.navBtn, ...(currentView === item.view || (item.view === 'my-tickets' && currentView === 'ticket-detail') ? styles.activeNavBtn : {}) }}>
+            <button key={item.view} type="button" onClick={() => onNavigate(item.view)} style={{ ...styles.navBtn, ...(currentView === item.view || (item.view === 'my-tickets' && currentView === 'ticket-detail') || (item.view === 'staff-queue' && currentView === 'staff-ticket-detail') ? styles.activeNavBtn : {}) }}>
               {item.label}
             </button>
           ))}

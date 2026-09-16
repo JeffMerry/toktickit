@@ -20,7 +20,7 @@ describe('StaffTicketQueue', () => {
       }),
     } as Response);
 
-    render(<StaffTicketQueue />);
+    render(<StaffTicketQueue onSelectTicket={vi.fn()} />);
 
     expect(await screen.findByText('TKT-2026-QUEUE-A')).toBeInTheDocument();
     expect(screen.getByText('Queue Alpha issue')).toBeInTheDocument();

@@ -8,6 +8,7 @@ import { AttachmentSection } from './components/AttachmentSection';
 import { LoginPage } from './components/LoginPage';
 import { ChangePasswordPage } from './components/ChangePasswordPage';
 import { StaffTicketQueue } from './components/StaffTicketQueue';
+import { StaffTicketDetail } from './components/StaffTicketDetail';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
@@ -16,12 +17,13 @@ function MainApp() {
   const { user, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<ViewMode>('my-tickets');
   const activeView: ViewMode = user?.role === 'IT_STAFF'
-    ? 'staff-queue'
+    ? (currentView === 'staff-ticket-detail' ? 'staff-ticket-detail' : 'staff-queue')
     : user?.role === 'ADMINISTRATOR'
       ? 'user-management'
       : currentView;
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+  const [selectedStaffTicketId, setSelectedStaffTicketId] = useState<number | null>(null);
 
   // Ticket Detail States
   const [ticketDetail, setTicketDetail] = useState<TicketDetailData | null>(null);
@@ -408,7 +410,11 @@ function MainApp() {
         )}
 
         {activeView === 'staff-queue' && (
-          <StaffTicketQueue />
+          <StaffTicketQueue onSelectTicket={(ticketId) => { setSelectedStaffTicketId(ticketId); setCurrentView('staff-ticket-detail'); }} />
+        )}
+
+        {activeView === 'staff-ticket-detail' && selectedStaffTicketId && (
+          <StaffTicketDetail ticketId={selectedStaffTicketId} onBack={() => setCurrentView('staff-queue')} />
         )}
 
         {activeView === 'user-management' && (

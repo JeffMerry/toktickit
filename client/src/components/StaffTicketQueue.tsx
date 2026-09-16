@@ -16,7 +16,7 @@ type QueueTicket = {
 
 type Pagination = { total: number; page: number; limit: number; totalPages: number };
 
-export function StaffTicketQueue() {
+export function StaffTicketQueue({ onSelectTicket }: { onSelectTicket: (ticketId: number) => void }) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [assignment, setAssignment] = useState('');
@@ -79,6 +79,7 @@ export function StaffTicketQueue() {
               <p style={styles.meta}>Requester: {ticket.requester.name} ({ticket.requester.email})</p>
               <p style={styles.meta}>Category: {ticket.category.name} · Requested: {ticket.requestedPriority} · IT: {ticket.itPriority}</p>
               <p style={styles.meta}>Owner: {ticket.owner?.name ?? 'Unassigned'}</p>
+              <button type="button" onClick={() => onSelectTicket(ticket.id)} style={styles.viewButton}>View operational detail</button>
             </article>
           ))}
         </div>
@@ -104,4 +105,5 @@ const styles: Record<string, CSSProperties> = {
   status: { padding: '2px 8px', borderRadius: '12px', background: '#EAF6EF', fontSize: '.75rem', fontWeight: 700 },
   summary: { margin: '10px 0 8px', color: '#1F2937', fontSize: '1.05rem' },
   meta: { margin: '4px 0', color: '#4B5563', fontSize: '.875rem' },
+  viewButton: { marginTop: '10px', border: 0, borderRadius: '6px', padding: '8px 11px', background: '#006B3C', color: '#FFF', fontWeight: 700, cursor: 'pointer' },
 };
