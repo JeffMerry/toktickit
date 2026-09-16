@@ -9,6 +9,7 @@ import { LoginPage } from './components/LoginPage';
 import { ChangePasswordPage } from './components/ChangePasswordPage';
 import { StaffTicketQueue } from './components/StaffTicketQueue';
 import { StaffTicketDetail } from './components/StaffTicketDetail';
+import { PublicCommentSection } from './components/PublicCommentSection';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
@@ -397,13 +398,16 @@ function MainApp() {
                 ticket={ticketDetail}
                 onBack={() => setCurrentView('my-tickets')}
               >
-                <AttachmentSection
-                  ticketId={ticketDetail.id}
-                  attachments={ticketDetail.attachments || []}
-                  onAttachmentChanged={() => {
-                    if (selectedTicketId) fetchTicketDetail(selectedTicketId);
-                  }}
-                />
+                <>
+                  <AttachmentSection
+                    ticketId={ticketDetail.id}
+                    attachments={ticketDetail.attachments || []}
+                    onAttachmentChanged={() => {
+                      if (selectedTicketId) fetchTicketDetail(selectedTicketId);
+                    }}
+                  />
+                  <PublicCommentSection ticketId={ticketDetail.id} />
+                </>
               </TicketDetailView>
             ) : null}
           </div>
