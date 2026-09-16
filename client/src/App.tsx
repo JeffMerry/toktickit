@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RequesterProvider, useRequester } from './context/RequesterContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
-import { RequesterSelector } from './components/RequesterSelector';
 import { CreateTicketForm } from './components/CreateTicketForm';
 import { MyTicketsList, TicketItem, PaginationMeta } from './components/MyTicketsList';
 import { TicketDetailView, TicketDetailData } from './components/TicketDetailView';
 import { AttachmentSection } from './components/AttachmentSection';
+import { LoginPage } from './components/LoginPage';
+import { ChangePasswordPage } from './components/ChangePasswordPage';
+import { apiFetch } from './lib/api';
 
-type ViewMode = 'my-tickets' | 'create-ticket' | 'select-requester' | 'ticket-detail';
+type ViewMode = 'my-tickets' | 'create-ticket' | 'ticket-detail';
 
 function MainApp() {
-  const { selectedRequester } = useRequester();
+  const { user, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<ViewMode>('my-tickets');
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
@@ -43,9 +45,10 @@ function MainApp() {
 
   // Fetch Categories for Filter Dropdown
   useEffect(() => {
+    if (!user) return;
     const fetchCategories = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/categories');
+        const res = await apiFetch('/api/categories');
         if (res.ok) {
           const data = await res.json();
           setCategories(data);
@@ -55,18 +58,17 @@ function MainApp() {
       }
     };
     fetchCategories();
-  }, []);
+  }, [user]);
 
   // Fetch Owned Tickets for Active Requester (Ownership Isolation)
   const fetchTickets = useCallback(async () => {
-    if (!selectedRequester) return;
+    if (!user) return;
 
     setLoadingTickets(true);
     setFetchError(null);
 
     try {
       const params = new URLSearchParams();
-      params.append('requesterId', String(selectedRequester.id));
       if (search.trim()) params.append('search', search.trim());
       if (selectedCategory) params.append('categoryId', selectedCategory);
       if (selectedPriority) params.append('priority', selectedPriority);
@@ -76,7 +78,7 @@ function MainApp() {
       params.append('page', String(page));
       params.append('limit', '10');
 
-      const res = await fetch(`http://localhost:5000/api/tickets?${params.toString()}`);
+      const res = await apiFetch(`/api/tickets?${params.toString()}`);
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.error || `Server responded with ${res.status}`);
@@ -91,17 +93,17 @@ function MainApp() {
     } finally {
       setLoadingTickets(false);
     }
-  }, [selectedRequester, search, selectedCategory, selectedPriority, selectedStatus, sortBy, sortOrder, page]);
+  }, [user, search, selectedCategory, selectedPriority, selectedStatus, sortBy, sortOrder, page]);
 
   // Fetch Ticket Detail with Ownership Validation (BR-13)
   const fetchTicketDetail = useCallback(async (id: number) => {
-    if (!selectedRequester) return;
+    if (!user) return;
 
     setLoadingDetail(true);
     setDetailError(null);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/tickets/${id}?requesterId=${selectedRequester.id}`);
+      const res = await apiFetch(`/api/tickets/${id}`);
       const data = await res.json();
 
       if (!res.ok) {
@@ -124,21 +126,21 @@ function MainApp() {
     } finally {
       setLoadingDetail(false);
     }
-  }, [selectedRequester]);
+  }, [user]);
 
-  // Trigger ticket list fetch when parameters or selectedRequester changes
+  // Trigger ticket list fetch when session user changes.
   useEffect(() => {
-    if (selectedRequester && currentView === 'my-tickets') {
+    if (user && currentView === 'my-tickets') {
       fetchTickets();
     }
-  }, [selectedRequester, currentView, fetchTickets]);
+  }, [user, currentView, fetchTickets]);
 
   // Trigger ticket detail fetch when selectedTicketId or currentView changes
   useEffect(() => {
-    if (selectedRequester && currentView === 'ticket-detail' && selectedTicketId) {
+    if (user && currentView === 'ticket-detail' && selectedTicketId) {
       fetchTicketDetail(selectedTicketId);
     }
-  }, [selectedRequester, currentView, selectedTicketId, fetchTicketDetail]);
+  }, [user, currentView, selectedTicketId, fetchTicketDetail]);
 
   const handleSelectTicket = (ticketId: number) => {
     setSelectedTicketId(ticketId);
@@ -166,27 +168,9 @@ function MainApp() {
     setPage(1);
   };
 
-  // If no Requester selected, render RequesterSelector
-  if (!selectedRequester || currentView === 'select-requester') {
-    return (
-      <div>
-        <Navbar
-          currentView={currentView}
-          onNavigate={(view) => {
-            setCreatedTicketNumber(null);
-            setSelectedTicketId(null);
-            setCurrentView(view);
-          }}
-        />
-        <RequesterSelector
-          onSuccess={() => {
-            setPage(1);
-            setCurrentView('my-tickets');
-          }}
-        />
-      </div>
-    );
-  }
+  if (isLoading) return <div style={loadingStateStyle}>Restoring your session...</div>;
+  if (!user) return <LoginPage />;
+  if (user.mustChangePassword) return <ChangePasswordPage />;
 
   const hasActiveFilters = Boolean(search || selectedCategory || selectedPriority || selectedStatus);
 
@@ -211,7 +195,7 @@ function MainApp() {
                   My Tickets
                 </h1>
                 <p style={{ color: '#4B5563', margin: '4px 0 0 0', fontSize: '0.875rem' }}>
-                  View and track all IT support tickets submitted by <strong>{selectedRequester.name}</strong>.
+                  View and track all IT support tickets submitted by <strong>{user.name}</strong>.
                 </p>
               </div>
               <button
@@ -559,8 +543,8 @@ const emptyIconCircle: React.CSSProperties = {
 
 export default function App() {
   return (
-    <RequesterProvider>
+    <AuthProvider>
       <MainApp />
-    </RequesterProvider>
+    </AuthProvider>
   );
 }

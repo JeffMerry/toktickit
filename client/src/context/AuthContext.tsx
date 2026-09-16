@@ -44,6 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const response = await apiFetch('/api/auth/me');
         const data = await readJson(response);
         if (response.ok && isMounted) setUser(data.user);
+      } catch {
+        // A failed restore is equivalent to no active session; the login page remains available.
       } finally {
         if (isMounted) setIsLoading(false);
       }
