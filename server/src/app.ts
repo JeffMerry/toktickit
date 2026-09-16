@@ -18,6 +18,7 @@ import {
   verifyPassword,
 } from './utils/auth';
 import { operationalAccessError } from './utils/staffAuthorization';
+import { allowedNextStatuses } from './utils/ticketWorkflow';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -434,6 +435,46 @@ app.get('/api/staff/tickets', requireAuthentication, requireOperationalUser, asy
   } catch (error) {
     console.error('Error fetching staff ticket queue:', error);
     return res.status(500).json({ error: 'Failed to fetch staff ticket queue.' });
+  }
+});
+
+// GET /api/staff/tickets/:id — operational ticket detail
+app.get('/api/staff/tickets/:id', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) {
+    return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  }
+
+  try {
+    const [ticket, eligibleOwners] = await Promise.all([
+      prisma.ticket.findUnique({
+        where: { id: ticketId },
+        include: {
+          category: { select: { id: true, name: true } },
+          relatedSystem: { select: { id: true, name: true } },
+          requester: { select: { id: true, name: true, email: true, department: true } },
+          owner: { select: { id: true, name: true, email: true, role: true } },
+          attachments: { select: { id: true, fileName: true, fileSize: true, mimeType: true, isRemoved: true, removedAt: true, removalReason: true, createdAt: true } },
+          publicComments: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } },
+          internalNotes: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } },
+        },
+      }),
+      prisma.user.findMany({
+        where: { isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, email: true, role: true },
+      }),
+    ]);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+
+    return res.json({
+      ...ticket,
+      eligibleOwners,
+      allowedNextStatuses: allowedNextStatuses(ticket.currentStatus),
+    });
+  } catch (error) {
+    console.error('Error fetching staff ticket detail:', error);
+    return res.status(500).json({ error: 'Failed to fetch staff ticket detail.' });
   }
 });
 
