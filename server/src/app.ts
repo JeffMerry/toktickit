@@ -343,6 +343,100 @@ app.get('/api/related-systems', async (req, res) => {
   }
 });
 
+// GET /api/staff/tickets — shared operational ticket queue
+app.get('/api/staff/tickets', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { search, categoryId, requestedPriority, itPriority, status, ownerId, assignment, sortBy, sortOrder, page, limit } = req.query;
+    const where: Prisma.TicketWhereInput = {};
+
+    if (search && typeof search === 'string' && search.trim()) {
+      const searchTerm = search.trim();
+      where.OR = [
+        { ticketNumber: { contains: searchTerm, mode: 'insensitive' } },
+        { summary: { contains: searchTerm, mode: 'insensitive' } },
+        { requester: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
+        { requester: { is: { email: { contains: searchTerm, mode: 'insensitive' } } } },
+      ];
+    }
+
+    if (categoryId) {
+      const parsedCategoryId = Number(categoryId);
+      if (!Number.isInteger(parsedCategoryId) || parsedCategoryId <= 0) {
+        return res.status(400).json({ error: 'categoryId must be a positive integer.' });
+      }
+      where.categoryId = parsedCategoryId;
+    }
+
+    const parsePriority = (value: unknown) => {
+      if (typeof value !== 'string') return undefined;
+      const priority = value.trim().toUpperCase() as Priority;
+      return ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority) ? priority : undefined;
+    };
+    if (requestedPriority) {
+      const priority = parsePriority(requestedPriority);
+      if (!priority) return res.status(400).json({ error: 'requestedPriority is invalid.' });
+      where.requestedPriority = priority;
+    }
+    if (itPriority) {
+      const priority = parsePriority(itPriority);
+      if (!priority) return res.status(400).json({ error: 'itPriority is invalid.' });
+      where.itPriority = priority;
+    }
+    if (status) {
+      if (typeof status !== 'string' || !parseTicketStatus(status)) {
+        return res.status(400).json({ error: 'status is invalid.' });
+      }
+      where.currentStatus = parseTicketStatus(status)!;
+    }
+
+    if (assignment === 'assigned') where.ownerId = { not: null };
+    if (assignment === 'unassigned') where.ownerId = null;
+    if (assignment && assignment !== 'assigned' && assignment !== 'unassigned') {
+      return res.status(400).json({ error: 'assignment must be assigned or unassigned.' });
+    }
+    if (ownerId) {
+      const parsedOwnerId = Number(ownerId);
+      if (!Number.isInteger(parsedOwnerId) || parsedOwnerId <= 0) {
+        return res.status(400).json({ error: 'ownerId must be a positive integer.' });
+      }
+      where.ownerId = parsedOwnerId;
+    }
+
+    const validSortFields = ['createdAt', 'updatedAt', 'ticketNumber', 'itPriority', 'currentStatus'] as const;
+    const sortField = validSortFields.includes(String(sortBy) as typeof validSortFields[number])
+      ? String(sortBy) as typeof validSortFields[number]
+      : 'updatedAt';
+    const order = String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [tickets, totalCount] = await Promise.all([
+      prisma.ticket.findMany({
+        where,
+        orderBy: { [sortField]: order },
+        skip,
+        take: limitNum,
+        include: {
+          category: { select: { id: true, name: true } },
+          relatedSystem: { select: { id: true, name: true } },
+          requester: { select: { id: true, name: true, email: true, department: true } },
+          owner: { select: { id: true, name: true, email: true, role: true } },
+        },
+      }),
+      prisma.ticket.count({ where }),
+    ]);
+
+    return res.json({
+      data: tickets,
+      pagination: { total: totalCount, page: pageNum, limit: limitNum, totalPages: Math.ceil(totalCount / limitNum) || 1 },
+    });
+  } catch (error) {
+    console.error('Error fetching staff ticket queue:', error);
+    return res.status(500).json({ error: 'Failed to fetch staff ticket queue.' });
+  }
+});
+
 // GET /api/tickets — ดึงรายการตั๋วของผู้แจ้งซ่อม (Ownership Isolation, Search, Filter, Sort, Pagination)
 app.get('/api/tickets', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
