@@ -18,7 +18,12 @@ import {
   verifyPassword,
 } from './utils/auth';
 import { operationalAccessError } from './utils/staffAuthorization';
-import { allowedNextStatuses } from './utils/ticketWorkflow';
+import {
+  allowedNextStatuses,
+  isAllowedStatusTransition,
+  transitionRequiresConfirmation,
+  transitionRequiresOwner,
+} from './utils/ticketWorkflow';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -509,6 +514,97 @@ app.post('/api/staff/tickets/:id/claim', requireTrustedOrigin, requireAuthentica
   } catch (error) {
     console.error('Error claiming ticket:', error);
     return res.status(500).json({ error: 'Failed to claim ticket.' });
+  }
+});
+
+function parseExpectedUpdatedAt(value: unknown): Date | undefined {
+  if (typeof value !== 'string') return undefined;
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? undefined : timestamp;
+}
+
+async function staleTicketResponse(res: Response, ticketId: number) {
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+  return res.status(409).json({ error: 'Ticket has changed. Refresh and try again.' });
+}
+
+// PATCH /api/staff/tickets/:id/owner — assign, reassign, or unassign an eligible owner
+app.patch('/api/staff/tickets/:id/owner', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  const ownerId = req.body?.ownerId;
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  if (ownerId !== null && (!Number.isInteger(ownerId) || ownerId <= 0)) {
+    return res.status(400).json({ error: 'ownerId must be a positive integer or null.' });
+  }
+
+  try {
+    if (ownerId !== null) {
+      const owner = await prisma.user.findFirst({ where: { id: ownerId, isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } } });
+      if (!owner) return res.status(422).json({ error: 'ownerId must reference an active operational user.' });
+    }
+    const updated = await prisma.ticket.updateMany({ where: { id: ticketId, updatedAt: expectedUpdatedAt }, data: { ownerId } });
+    if (updated.count !== 1) return staleTicketResponse(res, ticketId);
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { owner: { select: { id: true, name: true, email: true, role: true } } } });
+    return res.json(ticket);
+  } catch (error) {
+    console.error('Error updating ticket owner:', error);
+    return res.status(500).json({ error: 'Failed to update ticket owner.' });
+  }
+});
+
+// PATCH /api/staff/tickets/:id/priority — update IT Priority without changing Requested Priority
+app.patch('/api/staff/tickets/:id/priority', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  const itPriority = typeof req.body?.itPriority === 'string' ? req.body.itPriority.trim().toUpperCase() as Priority : undefined;
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  if (!itPriority || !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(itPriority)) {
+    return res.status(400).json({ error: 'itPriority is invalid.' });
+  }
+
+  try {
+    const updated = await prisma.ticket.updateMany({ where: { id: ticketId, updatedAt: expectedUpdatedAt }, data: { itPriority } });
+    if (updated.count !== 1) return staleTicketResponse(res, ticketId);
+    return res.json(await prisma.ticket.findUnique({ where: { id: ticketId } }));
+  } catch (error) {
+    console.error('Error updating ticket priority:', error);
+    return res.status(500).json({ error: 'Failed to update ticket priority.' });
+  }
+});
+
+// PATCH /api/staff/tickets/:id/status — apply only an approved, current status transition
+app.patch('/api/staff/tickets/:id/status', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  const status = typeof req.body?.status === 'string' ? parseTicketStatus(req.body.status) : undefined;
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  if (!status) return res.status(400).json({ error: 'status is invalid.' });
+
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { currentStatus: true, ownerId: true, updatedAt: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (ticket.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return res.status(409).json({ error: 'Ticket has changed. Refresh and try again.' });
+    if (!isAllowedStatusTransition(ticket.currentStatus, status)) {
+      return res.status(422).json({ error: 'This status transition is not allowed.' });
+    }
+    if (transitionRequiresOwner(ticket.currentStatus, status) && ticket.ownerId === null) {
+      return res.status(422).json({ error: 'An owner is required for this status transition.' });
+    }
+    if (transitionRequiresConfirmation(status) && req.body?.confirmed !== true) {
+      return res.status(422).json({ error: 'Confirmation is required for this status transition.' });
+    }
+
+    const updated = await prisma.ticket.updateMany({ where: { id: ticketId, updatedAt: expectedUpdatedAt }, data: { currentStatus: status } });
+    if (updated.count !== 1) return staleTicketResponse(res, ticketId);
+    return res.json(await prisma.ticket.findUnique({ where: { id: ticketId } }));
+  } catch (error) {
+    console.error('Error updating ticket status:', error);
+    return res.status(500).json({ error: 'Failed to update ticket status.' });
   }
 });
 

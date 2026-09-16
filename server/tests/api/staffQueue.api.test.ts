@@ -11,6 +11,8 @@ let requesterCookie = '';
 let userIds: number[] = [];
 let ticketIds: number[] = [];
 let queueTicketId = 0;
+let assignedTicketId = 0;
+let ownerUpdateTicketId = 0;
 
 async function createSessionCookie(userId: number) {
   const token = createSessionToken();
@@ -35,9 +37,12 @@ beforeAll(async () => {
   const tickets = await prisma.ticket.createManyAndReturn({ data: [
     { ticketNumber: 'TKT-2026-QUEUE-A', requesterId: requester.id, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'HIGH', itPriority: 'URGENT', currentStatus: TicketStatus.NEW, summary: 'Queue Alpha unassigned issue', description: 'A ticket used to test the shared operational queue.' },
     { ticketNumber: 'TKT-2026-QUEUE-B', requesterId: requester.id, ownerId: staff.id, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'LOW', itPriority: 'MEDIUM', currentStatus: TicketStatus.IN_PROGRESS, summary: 'Queue Beta assigned issue', description: 'An assigned ticket used to test queue filters.' },
+    { ticketNumber: 'TKT-2026-QUEUE-C', requesterId: requester.id, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'MEDIUM', itPriority: 'MEDIUM', currentStatus: TicketStatus.NEW, summary: 'Queue Gamma owner update issue', description: 'An unassigned ticket used to test owner assignment.' },
   ] });
   ticketIds = tickets.map((ticket) => ticket.id);
   queueTicketId = tickets.find((ticket) => ticket.ticketNumber === 'TKT-2026-QUEUE-A')!.id;
+  assignedTicketId = tickets.find((ticket) => ticket.ticketNumber === 'TKT-2026-QUEUE-B')!.id;
+  ownerUpdateTicketId = tickets.find((ticket) => ticket.ticketNumber === 'TKT-2026-QUEUE-C')!.id;
   await Promise.all([
     prisma.attachment.create({ data: { ticketId: queueTicketId, fileName: 'queue-detail.pdf', fileSize: 100, mimeType: 'application/pdf', storagePath: '/uploads/queue-detail.pdf' } }),
     prisma.publicComment.create({ data: { ticketId: queueTicketId, authorId: staff.id, content: 'Queue detail public comment.' } }),
@@ -111,5 +116,39 @@ describe('staff ticket queue API', () => {
       .send({ expectedUpdatedAt: ticket.updatedAt.toISOString() });
     expect(competing.status).toBe(409);
     expect(competing.body.error).toBe('Ticket is already assigned.');
+  });
+
+  it('updates an eligible owner and preserves requested priority when IT priority changes', async () => {
+    const ownerTicket = await prisma.ticket.findUniqueOrThrow({ where: { id: ownerUpdateTicketId }, select: { updatedAt: true } });
+    const ownerResponse = await request(app)
+      .patch(`/api/staff/tickets/${ownerUpdateTicketId}/owner`)
+      .set('Cookie', adminCookie)
+      .send({ ownerId: userIds[0], expectedUpdatedAt: ownerTicket.updatedAt.toISOString() });
+    expect(ownerResponse.status).toBe(200);
+    expect(ownerResponse.body.owner).toMatchObject({ id: userIds[0], role: 'IT_STAFF' });
+
+    const priorityTicket = await prisma.ticket.findUniqueOrThrow({ where: { id: assignedTicketId }, select: { updatedAt: true } });
+    const priorityResponse = await request(app)
+      .patch(`/api/staff/tickets/${assignedTicketId}/priority`)
+      .set('Cookie', staffCookie)
+      .send({ itPriority: 'HIGH', expectedUpdatedAt: priorityTicket.updatedAt.toISOString() });
+    expect(priorityResponse.status).toBe(200);
+    expect(priorityResponse.body).toMatchObject({ requestedPriority: 'LOW', itPriority: 'HIGH' });
+  });
+
+  it('enforces confirmation and allowed status transitions', async () => {
+    const ticket = await prisma.ticket.findUniqueOrThrow({ where: { id: assignedTicketId }, select: { updatedAt: true } });
+    await request(app)
+      .patch(`/api/staff/tickets/${assignedTicketId}/status`)
+      .set('Cookie', staffCookie)
+      .send({ status: 'RESOLVED', expectedUpdatedAt: ticket.updatedAt.toISOString() })
+      .expect(422);
+
+    const updated = await request(app)
+      .patch(`/api/staff/tickets/${assignedTicketId}/status`)
+      .set('Cookie', staffCookie)
+      .send({ status: 'RESOLVED', confirmed: true, expectedUpdatedAt: ticket.updatedAt.toISOString() });
+    expect(updated.status).toBe(200);
+    expect(updated.body.currentStatus).toBe('RESOLVED');
   });
 });
