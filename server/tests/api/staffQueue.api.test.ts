@@ -78,6 +78,17 @@ describe('staff ticket queue API', () => {
     await request(app).get('/api/staff/tickets').expect(401);
   });
 
+  it('returns only active operational users as eligible owners', async () => {
+    const response = await request(app).get('/api/staff/eligible-owners').set('Cookie', staffCookie);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: userIds[0], role: 'IT_STAFF' }),
+      expect.objectContaining({ id: userIds[1], role: 'ADMINISTRATOR' }),
+    ]));
+    expect(response.body).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: userIds[2] })]));
+    await request(app).get('/api/staff/eligible-owners').set('Cookie', requesterCookie).expect(403);
+  });
+
   it('validates queue filters', async () => {
     await request(app).get('/api/staff/tickets').query({ assignment: 'mine' }).set('Cookie', staffCookie).expect(400);
     await request(app).get('/api/staff/tickets').query({ requestedPriority: 'P0' }).set('Cookie', staffCookie).expect(400);

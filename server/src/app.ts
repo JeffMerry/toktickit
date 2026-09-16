@@ -450,6 +450,21 @@ app.get('/api/staff/tickets', requireAuthentication, requireOperationalUser, asy
   }
 });
 
+// GET /api/staff/eligible-owners — operational users available for queue filtering and assignment
+app.get('/api/staff/eligible-owners', requireAuthentication, requireOperationalUser, async (_req: AuthenticatedRequest, res) => {
+  try {
+    const owners = await prisma.user.findMany({
+      where: { isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    return res.json(owners);
+  } catch (error) {
+    console.error('Error fetching eligible owners:', error);
+    return res.status(500).json({ error: 'Failed to fetch eligible owners.' });
+  }
+});
+
 // GET /api/staff/tickets/:id — operational ticket detail
 app.get('/api/staff/tickets/:id', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
   const ticketId = Number(req.params.id);
