@@ -94,4 +94,22 @@ describe('staff ticket queue API', () => {
 
     await request(app).get(`/api/staff/tickets/${queueTicketId}`).set('Cookie', requesterCookie).expect(403);
   });
+
+  it('claims an unassigned ticket atomically and rejects a competing claim', async () => {
+    const ticket = await prisma.ticket.findUniqueOrThrow({ where: { id: queueTicketId }, select: { updatedAt: true } });
+    const claimed = await request(app)
+      .post(`/api/staff/tickets/${queueTicketId}/claim`)
+      .set('Cookie', staffCookie)
+      .send({ expectedUpdatedAt: ticket.updatedAt.toISOString() });
+
+    expect(claimed.status).toBe(200);
+    expect(claimed.body.owner).toMatchObject({ id: userIds[0], role: 'IT_STAFF' });
+
+    const competing = await request(app)
+      .post(`/api/staff/tickets/${queueTicketId}/claim`)
+      .set('Cookie', adminCookie)
+      .send({ expectedUpdatedAt: ticket.updatedAt.toISOString() });
+    expect(competing.status).toBe(409);
+    expect(competing.body.error).toBe('Ticket is already assigned.');
+  });
 });

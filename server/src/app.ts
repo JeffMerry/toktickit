@@ -478,6 +478,40 @@ app.get('/api/staff/tickets/:id', requireAuthentication, requireOperationalUser,
   }
 });
 
+// POST /api/staff/tickets/:id/claim — atomically claim an unassigned ticket
+app.post('/api/staff/tickets/:id/claim', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const expectedUpdatedAt = typeof req.body?.expectedUpdatedAt === 'string' ? new Date(req.body.expectedUpdatedAt) : undefined;
+  if (!Number.isInteger(ticketId) || ticketId <= 0) {
+    return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  }
+  if (!expectedUpdatedAt || Number.isNaN(expectedUpdatedAt.getTime())) {
+    return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  }
+
+  try {
+    const claimed = await prisma.ticket.updateMany({
+      where: { id: ticketId, ownerId: null, updatedAt: expectedUpdatedAt },
+      data: { ownerId: req.auth!.user.id },
+    });
+    if (claimed.count === 1) {
+      const ticket = await prisma.ticket.findUnique({
+        where: { id: ticketId },
+        include: { owner: { select: { id: true, name: true, email: true, role: true } } },
+      });
+      return res.json(ticket);
+    }
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { ownerId: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (ticket.ownerId !== null) return res.status(409).json({ error: 'Ticket is already assigned.' });
+    return res.status(409).json({ error: 'Ticket has changed. Refresh and try again.' });
+  } catch (error) {
+    console.error('Error claiming ticket:', error);
+    return res.status(500).json({ error: 'Failed to claim ticket.' });
+  }
+});
+
 // GET /api/tickets — ดึงรายการตั๋วของผู้แจ้งซ่อม (Ownership Isolation, Search, Filter, Sort, Pagination)
 app.get('/api/tickets', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
