@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
@@ -6,9 +6,92 @@ import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
 import type { Prisma, Priority, TicketStatus } from '@prisma/client';
 import { generateTicketNumber } from './utils/ticketNumber';
+import {
+  createSessionToken,
+  hashPassword,
+  hashSessionToken,
+  normalizeEmail,
+  readCookie,
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_MS,
+  validatePassword,
+  verifyPassword,
+} from './utils/auth';
 
 const app = express();
 const prisma = new PrismaClient();
+const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+
+type SafeUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR';
+  isActive: boolean;
+  mustChangePassword: boolean;
+};
+
+type AuthenticatedRequest = Request & { auth?: { sessionId: number; user: SafeUser } };
+
+const safeUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  isActive: true,
+  mustChangePassword: true,
+} as const;
+
+function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_TTL_MS,
+    path: '/',
+  };
+}
+
+function clearSessionCookie(res: Response) {
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+  });
+}
+
+function requireTrustedOrigin(req: Request, res: Response, next: NextFunction) {
+  const origin = req.get('origin');
+  if (origin && origin !== clientOrigin) {
+    return res.status(403).json({ error: 'Request origin is not allowed.' });
+  }
+  next();
+}
+
+async function requireAuthentication(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const rawToken = readCookie(req.headers.cookie, SESSION_COOKIE_NAME);
+  if (!rawToken) return res.status(401).json({ error: 'Authentication is required.' });
+
+  try {
+    const session = await prisma.session.findFirst({
+      where: {
+        tokenHash: hashSessionToken(rawToken),
+        expiresAt: { gt: new Date() },
+        user: { isActive: true },
+      },
+      select: { id: true, user: { select: safeUserSelect } },
+    });
+    if (!session) {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Authentication is required.' });
+    }
+    req.auth = { sessionId: session.id, user: session.user };
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
 
 const legacyStatusMap: Record<string, TicketStatus> = {
   NEW: 'NEW',
@@ -28,8 +111,86 @@ function parseTicketStatus(value: string): TicketStatus | undefined {
   return legacyStatusMap[value.trim().toUpperCase()];
 }
 
-app.use(cors());
+app.use(cors({ origin: clientOrigin, credentials: true }));
 app.use(express.json());
+
+// Authentication endpoints
+app.post('/api/auth/login', requireTrustedOrigin, async (req, res) => {
+  const { email, password } = req.body || {};
+  if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { normalizedEmail: normalizeEmail(email) },
+      select: { ...safeUserSelect, passwordHash: true },
+    });
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+    if (!user.isActive) {
+      return res.status(403).json({ error: 'This account is inactive.' });
+    }
+
+    const { rawToken, tokenHash } = createSessionToken();
+    await prisma.session.create({
+      data: { tokenHash, userId: user.id, expiresAt: new Date(Date.now() + SESSION_TTL_MS) },
+    });
+    res.cookie(SESSION_COOKIE_NAME, rawToken, sessionCookieOptions());
+    return res.json({ user: { ...user, passwordHash: undefined } });
+  } catch (error) {
+    console.error('Error signing in:', error);
+    return res.status(500).json({ error: 'Unable to sign in.' });
+  }
+});
+
+app.get('/api/auth/me', requireAuthentication, (req: AuthenticatedRequest, res) => {
+  return res.json({ user: req.auth!.user });
+});
+
+app.post('/api/auth/change-password', requireTrustedOrigin, requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || typeof confirmPassword !== 'string') {
+    return res.status(400).json({ error: 'Current password, new password, and confirmation are required.' });
+  }
+  const passwordError = validatePassword(newPassword);
+  if (passwordError || newPassword !== confirmPassword) {
+    return res.status(400).json({ error: passwordError || 'Password confirmation does not match.' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.auth!.user.id }, select: { passwordHash: true } });
+    if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+
+    const { rawToken, tokenHash } = createSessionToken();
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: req.auth!.user.id }, data: { passwordHash, mustChangePassword: false } }),
+      prisma.session.deleteMany({ where: { userId: req.auth!.user.id } }),
+      prisma.session.create({ data: { tokenHash, userId: req.auth!.user.id, expiresAt: new Date(Date.now() + SESSION_TTL_MS) } }),
+    ]);
+    const updatedUser = { ...req.auth!.user, mustChangePassword: false };
+    res.cookie(SESSION_COOKIE_NAME, rawToken, sessionCookieOptions());
+    return res.json({ user: updatedUser });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    return res.status(500).json({ error: 'Unable to change password.' });
+  }
+});
+
+app.post('/api/auth/logout', requireTrustedOrigin, requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  try {
+    await prisma.session.delete({ where: { id: req.auth!.sessionId } });
+    clearSessionCookie(res);
+    return res.json({ loggedOut: true });
+  } catch (error) {
+    console.error('Error signing out:', error);
+    return res.status(500).json({ error: 'Unable to sign out.' });
+  }
+});
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, '../uploads');
