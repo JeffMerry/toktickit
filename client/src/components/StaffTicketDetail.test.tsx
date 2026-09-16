@@ -28,5 +28,7 @@ describe('StaffTicketDetail', () => {
     expect(screen.getByLabelText('IT Priority')).toHaveValue('HIGH');
     expect(screen.getByLabelText('Owner')).toHaveValue('');
     expect(screen.getByLabelText('Next status')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Public Comment' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Internal Note' })).toBeInTheDocument();
   });
 });

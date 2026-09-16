@@ -28,6 +28,8 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
   const [isUpdating, setIsUpdating] = useState(false);
   const [status, setStatus] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [publicComment, setPublicComment] = useState('');
+  const [internalNote, setInternalNote] = useState('');
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -69,6 +71,24 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
     if (status) void mutate(`/api/staff/tickets/${ticketId}/status`, { status, confirmed });
   };
 
+  const submitDiscussion = async (event: FormEvent, path: string, content: string, clear: () => void) => {
+    event.preventDefault();
+    if (!content.trim()) return;
+    setIsUpdating(true);
+    setError(null);
+    try {
+      const response = await apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: content.trim() }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to add discussion content.');
+      clear();
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to add discussion content.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   if (isLoading) return <p style={styles.state}>Loading operational ticket detail...</p>;
   if (error && !ticket) return <div role="alert" style={styles.error}><p>{error}</p><button onClick={() => void load()} style={styles.button}>Retry</button></div>;
   if (!ticket) return null;
@@ -89,7 +109,20 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
       </div>
       <div style={styles.grid}>
         <section style={styles.card}><h2 style={styles.heading}>Attachments</h2>{ticket.attachments.length ? ticket.attachments.map((attachment) => <p key={attachment.id}>{attachment.fileName}{attachment.isRemoved ? ` (removed: ${attachment.removalReason || 'no reason'})` : ''}</p>) : <p>No attachments.</p>}</section>
-        <section style={styles.card}><h2 style={styles.heading}>Public Comments</h2>{ticket.publicComments.length ? ticket.publicComments.map((comment) => <p key={comment.id}><strong>{comment.author.name}:</strong> {comment.content}</p>) : <p>No public comments.</p>}<h2 style={styles.heading}>Internal Notes</h2>{ticket.internalNotes.length ? ticket.internalNotes.map((note) => <p key={note.id}><strong>{note.author.name}:</strong> {note.content}</p>) : <p>No internal notes.</p>}</section>
+        <section style={styles.card}>
+          <h2 style={styles.heading}>Public Comments</h2>
+          {ticket.publicComments.length ? ticket.publicComments.map((comment) => <p key={comment.id}><strong>{comment.author.name}:</strong> {comment.content}</p>) : <p>No public comments.</p>}
+          <form onSubmit={(event) => void submitDiscussion(event, `/api/tickets/${ticketId}/public-comments`, publicComment, () => setPublicComment(''))} style={styles.discussionForm}>
+            <label style={styles.label}>Add Public Comment<textarea value={publicComment} onChange={(event) => setPublicComment(event.target.value)} maxLength={2000} disabled={isUpdating} style={styles.textarea} /></label>
+            <button type="submit" disabled={isUpdating || !publicComment.trim()} style={styles.button}>Add Public Comment</button>
+          </form>
+          <h2 style={styles.heading}>Internal Notes</h2>
+          {ticket.internalNotes.length ? ticket.internalNotes.map((note) => <p key={note.id}><strong>{note.author.name}:</strong> {note.content}</p>) : <p>No internal notes.</p>}
+          <form onSubmit={(event) => void submitDiscussion(event, `/api/staff/tickets/${ticketId}/internal-notes`, internalNote, () => setInternalNote(''))} style={styles.discussionForm}>
+            <label style={styles.label}>Add Internal Note<textarea value={internalNote} onChange={(event) => setInternalNote(event.target.value)} maxLength={4000} disabled={isUpdating} style={styles.textarea} /></label>
+            <button type="submit" disabled={isUpdating || !internalNote.trim()} style={styles.button}>Add Internal Note</button>
+          </form>
+        </section>
       </div>
     </section>
   );
@@ -99,5 +132,5 @@ const styles: Record<string, CSSProperties> = {
   back: { border: 0, background: 'transparent', color: '#006B3C', padding: 0, fontWeight: 700, cursor: 'pointer', marginBottom: '16px' },
   header: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'start', marginBottom: '18px' },
   ticketNumber: { color: '#006B3C', fontWeight: 700, margin: 0 }, title: { color: '#1F2937', margin: '4px 0 0' }, status: { padding: '5px 9px', borderRadius: '12px', background: '#EAF6EF', color: '#006B3C', fontWeight: 700, whiteSpace: 'nowrap' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '16px' }, card: { padding: '18px', border: '1px solid #E5E7EB', borderRadius: '10px', background: '#FFF' }, heading: { color: '#006B3C', fontSize: '1.05rem', margin: '0 0 12px' }, description: { whiteSpace: 'pre-wrap', color: '#374151' }, label: { display: 'grid', gap: '5px', fontWeight: 700, color: '#374151', margin: '12px 0' }, select: { padding: '8px', border: '1px solid #D1D5DB', borderRadius: '6px', background: '#FFF' }, button: { border: 0, borderRadius: '6px', padding: '9px 12px', background: '#006B3C', color: '#FFF', fontWeight: 700, cursor: 'pointer' }, statusForm: { borderTop: '1px solid #E5E7EB', marginTop: '16px', paddingTop: '4px' }, confirm: { display: 'flex', gap: '7px', alignItems: 'center', fontSize: '.85rem', color: '#374151', margin: '10px 0' }, state: { padding: '32px', textAlign: 'center' }, error: { padding: '12px', border: '1px solid #FCA5A5', borderRadius: '8px', background: '#FEE2E2', color: '#991B1B', marginBottom: '14px' },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '16px' }, card: { padding: '18px', border: '1px solid #E5E7EB', borderRadius: '10px', background: '#FFF' }, heading: { color: '#006B3C', fontSize: '1.05rem', margin: '0 0 12px' }, description: { whiteSpace: 'pre-wrap', color: '#374151' }, label: { display: 'grid', gap: '5px', fontWeight: 700, color: '#374151', margin: '12px 0' }, select: { padding: '8px', border: '1px solid #D1D5DB', borderRadius: '6px', background: '#FFF' }, textarea: { minHeight: '70px', padding: '8px', border: '1px solid #D1D5DB', borderRadius: '6px', resize: 'vertical', fontFamily: 'inherit' }, button: { border: 0, borderRadius: '6px', padding: '9px 12px', background: '#006B3C', color: '#FFF', fontWeight: 700, cursor: 'pointer' }, statusForm: { borderTop: '1px solid #E5E7EB', marginTop: '16px', paddingTop: '4px' }, discussionForm: { borderTop: '1px solid #E5E7EB', margin: '14px 0', paddingTop: '4px' }, confirm: { display: 'flex', gap: '7px', alignItems: 'center', fontSize: '.85rem', color: '#374151', margin: '10px 0' }, state: { padding: '32px', textAlign: 'center' }, error: { padding: '12px', border: '1px solid #FCA5A5', borderRadius: '8px', background: '#FEE2E2', color: '#991B1B', marginBottom: '14px' },
 };
