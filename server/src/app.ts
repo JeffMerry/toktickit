@@ -21,6 +21,9 @@ import {
 const app = express();
 const prisma = new PrismaClient();
 const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const loginAttempts = new Map<string, { failures: number; firstFailedAt: number; lockedUntil?: number }>();
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 5;
 
 type SafeUser = {
   id: number;
@@ -112,6 +115,30 @@ function rejectClientSuppliedRequesterId(req: Request, res: Response): boolean {
   return true;
 }
 
+function loginAttemptKey(req: Request, normalizedEmail: string): string {
+  return `${normalizedEmail}:${req.ip || 'unknown'}`;
+}
+
+function isLoginThrottled(key: string): boolean {
+  const attempt = loginAttempts.get(key);
+  if (!attempt) return false;
+  const now = Date.now();
+  if (attempt.lockedUntil && attempt.lockedUntil > now) return true;
+  if (attempt.firstFailedAt + LOGIN_ATTEMPT_WINDOW_MS <= now) loginAttempts.delete(key);
+  return false;
+}
+
+function recordLoginFailure(key: string): boolean {
+  const now = Date.now();
+  const existing = loginAttempts.get(key);
+  const attempt = !existing || existing.firstFailedAt + LOGIN_ATTEMPT_WINDOW_MS <= now
+    ? { failures: 1, firstFailedAt: now }
+    : { ...existing, failures: existing.failures + 1 };
+  if (attempt.failures >= LOGIN_MAX_FAILURES) attempt.lockedUntil = now + LOGIN_ATTEMPT_WINDOW_MS;
+  loginAttempts.set(key, attempt);
+  return Boolean(attempt.lockedUntil);
+}
+
 const legacyStatusMap: Record<string, TicketStatus> = {
   NEW: 'NEW',
   OPEN: 'OPEN',
@@ -140,18 +167,27 @@ app.post('/api/auth/login', requireTrustedOrigin, async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
 
+  const normalizedEmail = normalizeEmail(email);
+  const attemptKey = loginAttemptKey(req, normalizedEmail);
+  if (isLoginThrottled(attemptKey)) {
+    return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+  }
+
   try {
     const user = await prisma.user.findUnique({
-      where: { normalizedEmail: normalizeEmail(email) },
+      where: { normalizedEmail },
       select: { ...safeUserSelect, passwordHash: true },
     });
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      if (recordLoginFailure(attemptKey)) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
     if (!user.isActive) {
+      if (recordLoginFailure(attemptKey)) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
       return res.status(403).json({ error: 'This account is inactive.' });
     }
 
+    loginAttempts.delete(attemptKey);
     const { rawToken, tokenHash } = createSessionToken();
     await prisma.session.create({
       data: { tokenHash, userId: user.id, expiresAt: new Date(Date.now() + SESSION_TTL_MS) },
@@ -261,25 +297,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // GET /api/requesters — ดึงเฉพาะ Active Development Requesters
-app.get('/api/requesters', async (req, res) => {
-  try {
-    const requesters = await prisma.user.findMany({
-      where: { isActive: true, role: 'REQUESTER' },
-      orderBy: { id: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        department: true,
-      },
-    });
-    res.json(requesters);
-  } catch (error) {
-    console.error('Error fetching requesters:', error);
-    res.status(500).json({ error: 'Failed to fetch active requesters' });
-  }
-});
-
 // GET /api/categories — ดึงเฉพาะ Active Categories
 app.get('/api/categories', async (req, res) => {
   try {

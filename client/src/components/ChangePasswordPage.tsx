@@ -18,7 +18,7 @@ export function ChangePasswordPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await changePassword(currentPassword, newPassword);
+      await changePassword(currentPassword, newPassword, confirmPassword);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to change password.');
     } finally {
@@ -30,7 +30,7 @@ export function ChangePasswordPage() {
     <main style={styles.page}>
       <section style={styles.card} aria-labelledby="change-password-title">
         <h1 id="change-password-title" style={styles.title}>Set a new password</h1>
-        <p style={styles.subtitle}>For your account security, you must change the temporary password before continuing.</p>
+        <p style={styles.subtitle}>For your account security, you must change the temporary password before continuing. Use 10-64 characters with at least one letter and one number.</p>
         {error && <div role="alert" style={styles.error}>{error}</div>}
         <form onSubmit={handleSubmit} style={styles.form}>
           <label style={styles.label}>Current password<input type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} style={styles.input} /></label>

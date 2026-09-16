@@ -15,6 +15,7 @@ export function LoginPage() {
     try {
       await login(email, password);
     } catch (reason) {
+      setPassword('');
       setError(reason instanceof Error ? reason.message : 'Unable to sign in.');
     } finally {
       setIsSubmitting(false);
