@@ -228,7 +228,27 @@ The suite was added later on the release-evidence branch and must be run from
 the final release candidate before the final PR. Manual screenshots remain
 required evidence in addition to the E2E result.
 
-## 9. Completion Evidence
+## 9. Final Release-Candidate Execution Record
+
+The following final verification ran against release-candidate commit `a51b474`
+on 2026-09-18 (Asia/Bangkok). The database was explicitly seeded before the
+server/client suites and seeded again immediately before E2E so each browser
+flow began with the documented temporary-password fixtures.
+
+| Command | Result | Evidence |
+| :--- | :--- | :--- |
+| `npm --prefix server run build` | Pass | TypeScript compilation completed successfully. |
+| `npm --prefix server test` | Pass | 14 test files, 48 tests passed. |
+| `npm --prefix client run build` | Pass | TypeScript compilation and Vite production build completed successfully. |
+| `npm --prefix client test` | Pass | 6 test files, 9 tests passed. |
+| `npm run test:e2e` | Pass | 4 Chromium role-journey tests passed in 21.1 seconds. |
+
+No automated-suite failures were hidden or skipped. The E2E result covers
+authentication/requester access, requester Ticket collaboration, IT Staff
+workflow, Administrator user management, and responsive checks at the tested
+viewports.
+
+## 10. Completion Evidence
 
 Before this plan is marked complete:
 

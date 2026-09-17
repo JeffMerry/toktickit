@@ -11,6 +11,20 @@
 
 The exact commands and results are recorded in [tests.md](tests.md). No failing automated test was skipped or hidden in this run.
 
+## Final Release-Candidate Verification
+
+- Release-candidate commit tested: `a51b474` (`feature/17-lab3-final-evidence`)
+- Test date: 2026-09-18 (Asia/Bangkok)
+- Seeded local fixtures before server/client verification and again before E2E
+- Server build: Pass; server suite: Pass — 14 files, 48 tests
+- Client build: Pass; client suite: Pass — 6 files, 9 tests
+- Playwright E2E: Pass — 4 Chromium role-journey tests in 21.1 seconds
+
+The E2E suite intentionally creates local test data and changes seeded
+temporary passwords. It is therefore run last, after the clean server/client
+verification. Required manual screenshots remain pending and are not claimed
+by this automated result.
+
 ## Merged Feature Evidence
 
 | Feature | Issue | Pull Request | Merge target | Outcome |
