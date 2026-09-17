@@ -195,13 +195,26 @@ npx playwright test e2e/lab-03/
 
 Migration verification additionally runs Prisma migration and seed commands against a disposable test database. The final results table must record the actual command, commit SHA, date, and Pass/Fail outcome from the integrated branch.
 
-## 8. Completion Evidence
+## 8. Integrated Execution Record
+
+The following commands ran against integrated `lab3-staging` commit `8bd18a9` on 2026-09-17 (Asia/Bangkok). The commit contains the merged Staff Ticket Workflow and Administrator User Management work.
+
+| Command | Result | Evidence |
+| :--- | :--- | :--- |
+| `npm --prefix server run build` | Pass | TypeScript compilation completed successfully. |
+| `npm --prefix server test` | Pass | 14 test files, 48 tests passed. |
+| `npm --prefix client run build` | Pass | TypeScript compilation and Vite production build completed successfully. |
+| `npm --prefix client test` | Pass | 6 test files, 9 tests passed. |
+
+No automated-suite failures were hidden or skipped during this run. The repository does not yet contain `e2e/lab-03/` tests, so no Lab 3 Playwright command is claimed as executed. Final release evidence must add the required manual screenshots and run the same command set again from the release candidate after the release PR is prepared.
+
+## 9. Completion Evidence
 
 Before this plan is marked complete:
 
 - [ ] Replace `Planned` with actual outcomes only after execution.
 - [ ] Record actual test file paths if implementation changes them.
 - [ ] Capture complete passing output from final `main`.
-- [ ] Record the tested commit SHA.
-- [ ] Link failed tests to corrective Issues/PRs instead of hiding failures.
+- [x] Record the tested commit SHA.
+- [x] Link failed tests to corrective Issues/PRs instead of hiding failures. No failures occurred in the integrated run.
 - [ ] Confirm every AC retains at least one passing automated or justified manual test.
