@@ -10,6 +10,7 @@ import { ChangePasswordPage } from './components/ChangePasswordPage';
 import { StaffTicketQueue } from './components/StaffTicketQueue';
 import { StaffTicketDetail } from './components/StaffTicketDetail';
 import { PublicCommentSection } from './components/PublicCommentSection';
+import { UserManagement } from './components/UserManagement';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
@@ -422,10 +423,7 @@ function MainApp() {
         )}
 
         {activeView === 'user-management' && (
-          <RolePlaceholder
-            title="User Management"
-            description="User management will be available in the next Lab 3 administration issue."
-          />
+          <UserManagement />
         )}
       </main>
     </div>
@@ -576,12 +574,3 @@ export default function App() {
   );
 }
 
-function RolePlaceholder({ title, description }: { title: string; description: string }) {
-  return (
-    <section style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
-      <h1 style={{ color: '#006B3C', margin: '0 0 10px' }}>{title}</h1>
-      <p style={{ color: '#4B5563', margin: 0 }}>{description}</p>
-      <p style={{ color: '#6B7280', margin: '12px 0 0', fontWeight: 600 }}>Coming soon</p>
-    </section>
-  );
-}
