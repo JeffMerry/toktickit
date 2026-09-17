@@ -8,9 +8,11 @@ const prisma = new PrismaClient();
 let adminCookie = '';
 let staffCookie = '';
 let requesterCookie = '';
+let secondRequesterCookie = '';
 let userIds: number[] = [];
 let adminId = 0;
 let staffId = 0;
+let secondRequesterId = 0;
 
 async function sessionCookie(userId: number) {
   const token = createSessionToken();
@@ -28,8 +30,9 @@ beforeAll(async () => {
   ]);
   adminId = admin.id;
   staffId = staff.id;
+  secondRequesterId = secondRequester.id;
   userIds = [admin.id, staff.id, requester.id, secondRequester.id];
-  [adminCookie, staffCookie, requesterCookie] = await Promise.all([sessionCookie(admin.id), sessionCookie(staff.id), sessionCookie(requester.id)]);
+  [adminCookie, staffCookie, requesterCookie, secondRequesterCookie] = await Promise.all([sessionCookie(admin.id), sessionCookie(staff.id), sessionCookie(requester.id), sessionCookie(secondRequester.id)]);
 });
 
 afterAll(async () => {
@@ -90,6 +93,17 @@ describe('administrator user list API', () => {
       .set('Cookie', adminCookie)
       .send({ ...admin, isActive: false, expectedUpdatedAt: admin.updatedAt.toISOString() })
       .expect(409);
+  });
+
+  it('deactivates another user and invalidates their active sessions', async () => {
+    const requester = await prisma.user.findUniqueOrThrow({ where: { id: secondRequesterId }, select: { name: true, email: true, role: true, updatedAt: true } });
+    const response = await request(app)
+      .patch(`/api/admin/users/${secondRequesterId}`)
+      .set('Cookie', adminCookie)
+      .send({ ...requester, isActive: false, expectedUpdatedAt: requester.updatedAt.toISOString() });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id: secondRequesterId, isActive: false });
+    await request(app).get('/api/auth/me').set('Cookie', secondRequesterCookie).expect(401);
   });
 
   it('resets an initial password, requires a change, and revokes current sessions', async () => {
