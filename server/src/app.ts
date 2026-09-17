@@ -52,6 +52,17 @@ const safeUserSelect = {
   mustChangePassword: true,
 } as const;
 
+const adminUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  isActive: true,
+  mustChangePassword: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 function sessionCookieOptions() {
   return {
     httpOnly: true,
@@ -454,6 +465,39 @@ app.get('/api/staff/tickets', requireAuthentication, requireOperationalUser, asy
   } catch (error) {
     console.error('Error fetching staff ticket queue:', error);
     return res.status(500).json({ error: 'Failed to fetch staff ticket queue.' });
+  }
+});
+
+// GET /api/admin/users — administrator user list with search and role filter
+app.get('/api/admin/users', requireAuthentication, requireAdministrator, async (req: AuthenticatedRequest, res) => {
+  const { search, role, page, limit } = req.query;
+  const where: Prisma.UserWhereInput = {};
+  if (search && typeof search === 'string' && search.trim()) {
+    const term = search.trim();
+    where.OR = [
+      { name: { contains: term, mode: 'insensitive' } },
+      { normalizedEmail: { contains: normalizeEmail(term), mode: 'insensitive' } },
+    ];
+  }
+  if (role) {
+    if (typeof role !== 'string' || !['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'].includes(role)) {
+      return res.status(400).json({ error: 'role is invalid.' });
+    }
+    where.role = role as 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR';
+  }
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.min(50, Math.max(1, Number(limit) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  try {
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({ where, select: adminUserSelect, orderBy: { name: 'asc' }, skip, take: limitNum }),
+      prisma.user.count({ where }),
+    ]);
+    return res.json({ data: users, pagination: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) || 1 } });
+  } catch (error) {
+    console.error('Error fetching admin users:', error);
+    return res.status(500).json({ error: 'Failed to fetch users.' });
   }
 });
 
