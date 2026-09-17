@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isOperationalRole, operationalAccessError } from '../../src/utils/staffAuthorization';
+import { administratorAccessError, isOperationalRole, operationalAccessError } from '../../src/utils/staffAuthorization';
 
 describe('operational staff authorization', () => {
   it('allows IT staff and administrators as operational roles', () => {
@@ -17,5 +17,13 @@ describe('operational staff authorization', () => {
     expect(operationalAccessError({ role: 'REQUESTER', mustChangePassword: false }))
       .toBe('Operational staff access is required.');
     expect(operationalAccessError({ role: 'ADMINISTRATOR', mustChangePassword: false })).toBeUndefined();
+  });
+
+  it('allows only an administrator into administration routes', () => {
+    expect(administratorAccessError({ role: 'IT_STAFF', mustChangePassword: false }))
+      .toBe('Administrator access is required.');
+    expect(administratorAccessError({ role: 'ADMINISTRATOR', mustChangePassword: true }))
+      .toBe('Password change is required before accessing this resource.');
+    expect(administratorAccessError({ role: 'ADMINISTRATOR', mustChangePassword: false })).toBeUndefined();
   });
 });

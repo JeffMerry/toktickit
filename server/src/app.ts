@@ -17,7 +17,7 @@ import {
   validatePassword,
   verifyPassword,
 } from './utils/auth';
-import { isOperationalRole, operationalAccessError } from './utils/staffAuthorization';
+import { administratorAccessError, isOperationalRole, operationalAccessError } from './utils/staffAuthorization';
 import {
   allowedNextStatuses,
   isAllowedStatusTransition,
@@ -117,6 +117,13 @@ function requireRequester(req: AuthenticatedRequest, res: Response, next: NextFu
 function requireOperationalUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.auth) return res.status(401).json({ error: 'Authentication is required.' });
   const error = operationalAccessError(req.auth.user);
+  if (error) return res.status(403).json({ error });
+  next();
+}
+
+function requireAdministrator(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.auth) return res.status(401).json({ error: 'Authentication is required.' });
+  const error = administratorAccessError(req.auth.user);
   if (error) return res.status(403).json({ error });
   next();
 }
