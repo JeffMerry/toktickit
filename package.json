@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "@playwright/test": "^1.62.1"
+  },
+  "scripts": {
+    "test:e2e": "playwright test e2e/lab-03"
   }
 }
