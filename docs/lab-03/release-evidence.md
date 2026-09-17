@@ -39,7 +39,7 @@ Capture these from the final release candidate after `feature/16-lab3-release-in
 
 Before opening `lab3-staging` to `main`:
 
-1. Pull the current `lab3-staging` tip and re-run all four build/test commands in `tests.md`.
+1. Pull the current `lab3-staging` tip and re-run every build/test command in `tests.md`, including `npm run test:e2e` after explicitly seeding the intended local test database.
 2. Replace the tested SHA above with that release-candidate SHA if application code changed.
 3. Capture the manual evidence in the matrix and link it in the PR.
 4. Complete the Release Pull Request table in `reviewer.md` after the PR exists and receives peer review.

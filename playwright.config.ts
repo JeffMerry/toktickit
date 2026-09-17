@@ -21,13 +21,13 @@ export default defineConfig({
     {
       command: 'npm --prefix server run dev',
       url: 'http://localhost:5000/api/health',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: process.env.E2E_REUSE_SERVER === 'true',
       timeout: 120_000,
     },
     {
       command: 'npm --prefix client run dev -- --host localhost',
       url: 'http://localhost:5173',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: process.env.E2E_REUSE_SERVER === 'true',
       timeout: 120_000,
     },
   ],

@@ -176,7 +176,10 @@ Inspection checks include consistent Zen Green tokens, role navigation, status/p
 
 ## 7. Planned Test Commands
 
-Commands will be finalized when the test files are implemented.
+The Lab 3 Playwright suite uses the seeded local-only accounts and deliberately
+does not seed the database itself. This avoids silently resetting a developer's
+local data. Before a full E2E run, explicitly reseed the intended local test
+database; the run changes seeded passwords and creates test Ticket/User data.
 
 ```bash
 # Backend unit and API/integration tests
@@ -190,8 +193,20 @@ npm --prefix client test
 npm --prefix client run build
 
 # Lab 3 E2E tests
-npx playwright test e2e/lab-03/
+npm --prefix server run db:seed
+npm run test:e2e
 ```
+
+The E2E suite is serial and covers these browser flows:
+
+- `e2e/lab-03/authentication.spec.ts` — safe failed login, required password change, logout, and requester session restoration.
+- `e2e/lab-03/requester-ticket-flow.spec.ts` — authenticated Ticket creation, owned detail access, and a Public Comment.
+- `e2e/lab-03/staff-ticket-flow.spec.ts` — Queue filtering, claim, IT Priority, status change, Public Comment, and Internal Note.
+- `e2e/lab-03/user-administration.spec.ts` — create, search, edit, and initial-password reset for an account.
+
+`playwright.config.ts` starts the local server and client for the test run. Set
+`E2E_REUSE_SERVER=true` (and, if needed, `E2E_BASE_URL`) only when
+intentionally targeting an already-running local app.
 
 Migration verification additionally runs Prisma migration and seed commands against a disposable test database. The final results table must record the actual command, commit SHA, date, and Pass/Fail outcome from the integrated branch.
 
@@ -206,7 +221,12 @@ The following commands ran against integrated `lab3-staging` commit `8bd18a9` on
 | `npm --prefix client run build` | Pass | TypeScript compilation and Vite production build completed successfully. |
 | `npm --prefix client test` | Pass | 6 test files, 9 tests passed. |
 
-No automated-suite failures were hidden or skipped during this run. The repository does not yet contain `e2e/lab-03/` tests, so no Lab 3 Playwright command is claimed as executed. Final release evidence must add the required manual screenshots and run the same command set again from the release candidate after the release PR is prepared.
+No automated-suite failures were hidden or skipped during this run. At the time
+of this integrated run, the repository did not yet contain `e2e/lab-03/` tests,
+so no Lab 3 Playwright command is claimed as executed for commit `8bd18a9`.
+The suite was added later on the release-evidence branch and must be run from
+the final release candidate before the final PR. Manual screenshots remain
+required evidence in addition to the E2E result.
 
 ## 9. Completion Evidence
 
