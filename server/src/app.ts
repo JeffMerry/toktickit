@@ -530,6 +530,73 @@ app.post('/api/admin/users', requireTrustedOrigin, requireAuthentication, requir
 });
 
 // GET /api/staff/eligible-owners — operational users available for queue filtering and assignment
+app.patch('/api/admin/users/:id', requireTrustedOrigin, requireAuthentication, requireAdministrator, async (req: AuthenticatedRequest, res) => {
+  const userId = Number(req.params.id);
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+  const role = req.body?.role;
+  const isActive = req.body?.isActive;
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user ID is required.' });
+  if (name.length < 2 || name.length > 100) return res.status(400).json({ error: 'name must contain 2 to 100 characters.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'email is invalid.' });
+  if (typeof role !== 'string' || !['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'].includes(role)) return res.status(400).json({ error: 'role is invalid.' });
+  if (typeof isActive !== 'boolean') return res.status(400).json({ error: 'isActive must be a boolean.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+
+  try {
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true, isActive: true, updatedAt: true } });
+    if (!target) return res.status(404).json({ error: 'User not found.' });
+    if (target.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return res.status(409).json({ error: 'User has changed. Refresh and try again.' });
+    if (userId === req.auth!.user.id && !isActive) return res.status(409).json({ error: 'Administrators cannot deactivate their own account.' });
+
+    const removesActiveAdministrator = target.role === 'ADMINISTRATOR' && target.isActive && (role !== 'ADMINISTRATOR' || !isActive);
+    if (removesActiveAdministrator) {
+      const activeAdminCount = await prisma.user.count({ where: { role: 'ADMINISTRATOR', isActive: true } });
+      if (activeAdminCount <= 1) return res.status(409).json({ error: 'At least one active administrator is required.' });
+    }
+
+    const updated = await prisma.user.updateMany({
+      where: { id: userId, updatedAt: expectedUpdatedAt },
+      data: { name, email, normalizedEmail: normalizeEmail(email), role: role as UserRole, isActive },
+    });
+    if (updated.count !== 1) return res.status(409).json({ error: 'User has changed. Refresh and try again.' });
+    if (target.isActive && !isActive) await prisma.session.deleteMany({ where: { userId } });
+    return res.json(await prisma.user.findUnique({ where: { id: userId }, select: adminUserSelect }));
+  } catch (error: any) {
+    if (error?.code === 'P2002') return res.status(409).json({ error: 'A user with this email already exists.' });
+    console.error('Error updating user:', error);
+    return res.status(500).json({ error: 'Failed to update user.' });
+  }
+});
+
+app.post('/api/admin/users/:id/initial-password', requireTrustedOrigin, requireAuthentication, requireAdministrator, async (req: AuthenticatedRequest, res) => {
+  const userId = Number(req.params.id);
+  const initialPassword = req.body?.initialPassword;
+  const confirmPassword = req.body?.confirmPassword;
+  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user ID is required.' });
+  if (typeof initialPassword !== 'string' || typeof confirmPassword !== 'string') return res.status(400).json({ error: 'initialPassword and confirmPassword are required.' });
+  if (initialPassword !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match.' });
+  const passwordError = validatePassword(initialPassword);
+  if (passwordError) return res.status(400).json({ error: passwordError });
+
+  try {
+    const passwordHash = await hashPassword(initialPassword);
+    const user = await prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!target) return undefined;
+      const updated = await tx.user.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: true }, select: adminUserSelect });
+      await tx.session.deleteMany({ where: { userId } });
+      return updated;
+    });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    return res.json(user);
+  } catch (error) {
+    console.error('Error resetting user password:', error);
+    return res.status(500).json({ error: 'Failed to reset user password.' });
+  }
+});
+
 app.get('/api/staff/eligible-owners', requireAuthentication, requireOperationalUser, async (_req: AuthenticatedRequest, res) => {
   try {
     const owners = await prisma.user.findMany({

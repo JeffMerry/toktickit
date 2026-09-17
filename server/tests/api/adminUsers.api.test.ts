@@ -9,6 +9,8 @@ let adminCookie = '';
 let staffCookie = '';
 let requesterCookie = '';
 let userIds: number[] = [];
+let adminId = 0;
+let staffId = 0;
 
 async function sessionCookie(userId: number) {
   const token = createSessionToken();
@@ -24,6 +26,8 @@ beforeAll(async () => {
     prisma.user.create({ data: { name: 'Admin List Requester', email: 'admin.list.requester@example.test', normalizedEmail: 'admin.list.requester@example.test', passwordHash, role: 'REQUESTER', mustChangePassword: false } }),
     prisma.user.create({ data: { name: 'Second Requester', email: 'second.requester@example.test', normalizedEmail: 'second.requester@example.test', passwordHash, role: 'REQUESTER', mustChangePassword: false } }),
   ]);
+  adminId = admin.id;
+  staffId = staff.id;
   userIds = [admin.id, staff.id, requester.id, secondRequester.id];
   [adminCookie, staffCookie, requesterCookie] = await Promise.all([sessionCookie(admin.id), sessionCookie(staff.id), sessionCookie(requester.id)]);
 });
@@ -68,5 +72,38 @@ describe('administrator user list API', () => {
       .set('Cookie', adminCookie)
       .send({ name: 'Duplicate Staff', email: 'CREATED.STAFF@example.test', role: 'IT_STAFF', isActive: true, initialPassword: 'CreatedPassword123!' })
       .expect(409);
+  });
+
+  it('updates users with stale-write and self-deactivation safeguards', async () => {
+    const staff = await prisma.user.findUniqueOrThrow({ where: { id: staffId }, select: { updatedAt: true } });
+    const update = { name: 'Updated Staff', email: 'updated.staff@example.test', role: 'REQUESTER', isActive: true, expectedUpdatedAt: staff.updatedAt.toISOString() };
+    const response = await request(app).patch(`/api/admin/users/${staffId}`).set('Cookie', adminCookie).send(update);
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id: staffId, name: 'Updated Staff', email: 'updated.staff@example.test', role: 'REQUESTER' });
+    expect(response.body).not.toHaveProperty('passwordHash');
+
+    await request(app).patch(`/api/admin/users/${staffId}`).set('Cookie', adminCookie).send(update).expect(409);
+
+    const admin = await prisma.user.findUniqueOrThrow({ where: { id: adminId }, select: { name: true, email: true, role: true, updatedAt: true } });
+    await request(app)
+      .patch(`/api/admin/users/${adminId}`)
+      .set('Cookie', adminCookie)
+      .send({ ...admin, isActive: false, expectedUpdatedAt: admin.updatedAt.toISOString() })
+      .expect(409);
+  });
+
+  it('resets an initial password, requires a change, and revokes current sessions', async () => {
+    const response = await request(app)
+      .post(`/api/admin/users/${staffId}/initial-password`)
+      .set('Cookie', adminCookie)
+      .send({ initialPassword: 'ResetPassword123!', confirmPassword: 'ResetPassword123!' });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id: staffId, mustChangePassword: true });
+    expect(response.body).not.toHaveProperty('passwordHash');
+
+    const saved = await prisma.user.findUniqueOrThrow({ where: { id: staffId }, select: { passwordHash: true, mustChangePassword: true } });
+    await expect(verifyPassword('ResetPassword123!', saved.passwordHash)).resolves.toBe(true);
+    expect(saved.mustChangePassword).toBe(true);
+    await request(app).get('/api/auth/me').set('Cookie', staffCookie).expect(401);
   });
 });
