@@ -17,6 +17,13 @@ import {
   validatePassword,
   verifyPassword,
 } from './utils/auth';
+import { isOperationalRole, operationalAccessError } from './utils/staffAuthorization';
+import {
+  allowedNextStatuses,
+  isAllowedStatusTransition,
+  transitionRequiresConfirmation,
+  transitionRequiresOwner,
+} from './utils/ticketWorkflow';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -105,6 +112,20 @@ function requireRequester(req: AuthenticatedRequest, res: Response, next: NextFu
     return res.status(403).json({ error: 'Requester access is required.' });
   }
   next();
+}
+
+function requireOperationalUser(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.auth) return res.status(401).json({ error: 'Authentication is required.' });
+  const error = operationalAccessError(req.auth.user);
+  if (error) return res.status(403).json({ error });
+  next();
+}
+
+async function canAccessTicketDiscussion(req: AuthenticatedRequest, ticketId: number): Promise<boolean> {
+  if (!req.auth || req.auth.user.mustChangePassword) return false;
+  if (isOperationalRole(req.auth.user.role)) return true;
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { requesterId: true } });
+  return ticket?.requesterId === req.auth.user.id;
 }
 
 function rejectClientSuppliedRequesterId(req: Request, res: Response): boolean {
@@ -333,6 +354,347 @@ app.get('/api/related-systems', async (req, res) => {
     console.error('Error fetching related systems:', error);
     res.status(500).json({ error: 'Failed to fetch related systems' });
   }
+});
+
+// GET /api/staff/tickets — shared operational ticket queue
+app.get('/api/staff/tickets', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { search, categoryId, requestedPriority, itPriority, status, ownerId, assignment, sortBy, sortOrder, page, limit } = req.query;
+    const where: Prisma.TicketWhereInput = {};
+
+    if (search && typeof search === 'string' && search.trim()) {
+      const searchTerm = search.trim();
+      where.OR = [
+        { ticketNumber: { contains: searchTerm, mode: 'insensitive' } },
+        { summary: { contains: searchTerm, mode: 'insensitive' } },
+        { requester: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
+        { requester: { is: { email: { contains: searchTerm, mode: 'insensitive' } } } },
+      ];
+    }
+
+    if (categoryId) {
+      const parsedCategoryId = Number(categoryId);
+      if (!Number.isInteger(parsedCategoryId) || parsedCategoryId <= 0) {
+        return res.status(400).json({ error: 'categoryId must be a positive integer.' });
+      }
+      where.categoryId = parsedCategoryId;
+    }
+
+    const parsePriority = (value: unknown) => {
+      if (typeof value !== 'string') return undefined;
+      const priority = value.trim().toUpperCase() as Priority;
+      return ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority) ? priority : undefined;
+    };
+    if (requestedPriority) {
+      const priority = parsePriority(requestedPriority);
+      if (!priority) return res.status(400).json({ error: 'requestedPriority is invalid.' });
+      where.requestedPriority = priority;
+    }
+    if (itPriority) {
+      const priority = parsePriority(itPriority);
+      if (!priority) return res.status(400).json({ error: 'itPriority is invalid.' });
+      where.itPriority = priority;
+    }
+    if (status) {
+      if (typeof status !== 'string' || !parseTicketStatus(status)) {
+        return res.status(400).json({ error: 'status is invalid.' });
+      }
+      where.currentStatus = parseTicketStatus(status)!;
+    }
+
+    if (assignment === 'assigned') where.ownerId = { not: null };
+    if (assignment === 'unassigned') where.ownerId = null;
+    if (assignment && assignment !== 'assigned' && assignment !== 'unassigned') {
+      return res.status(400).json({ error: 'assignment must be assigned or unassigned.' });
+    }
+    if (ownerId) {
+      const parsedOwnerId = Number(ownerId);
+      if (!Number.isInteger(parsedOwnerId) || parsedOwnerId <= 0) {
+        return res.status(400).json({ error: 'ownerId must be a positive integer.' });
+      }
+      where.ownerId = parsedOwnerId;
+    }
+
+    const validSortFields = ['createdAt', 'updatedAt', 'ticketNumber', 'itPriority', 'currentStatus'] as const;
+    const sortField = validSortFields.includes(String(sortBy) as typeof validSortFields[number])
+      ? String(sortBy) as typeof validSortFields[number]
+      : 'updatedAt';
+    const order = String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [tickets, totalCount] = await Promise.all([
+      prisma.ticket.findMany({
+        where,
+        orderBy: { [sortField]: order },
+        skip,
+        take: limitNum,
+        include: {
+          category: { select: { id: true, name: true } },
+          relatedSystem: { select: { id: true, name: true } },
+          requester: { select: { id: true, name: true, email: true, department: true } },
+          owner: { select: { id: true, name: true, email: true, role: true } },
+        },
+      }),
+      prisma.ticket.count({ where }),
+    ]);
+
+    return res.json({
+      data: tickets,
+      pagination: { total: totalCount, page: pageNum, limit: limitNum, totalPages: Math.ceil(totalCount / limitNum) || 1 },
+    });
+  } catch (error) {
+    console.error('Error fetching staff ticket queue:', error);
+    return res.status(500).json({ error: 'Failed to fetch staff ticket queue.' });
+  }
+});
+
+// GET /api/staff/eligible-owners — operational users available for queue filtering and assignment
+app.get('/api/staff/eligible-owners', requireAuthentication, requireOperationalUser, async (_req: AuthenticatedRequest, res) => {
+  try {
+    const owners = await prisma.user.findMany({
+      where: { isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    return res.json(owners);
+  } catch (error) {
+    console.error('Error fetching eligible owners:', error);
+    return res.status(500).json({ error: 'Failed to fetch eligible owners.' });
+  }
+});
+
+// GET /api/staff/tickets/:id — operational ticket detail
+app.get('/api/staff/tickets/:id', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) {
+    return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  }
+
+  try {
+    const [ticket, eligibleOwners] = await Promise.all([
+      prisma.ticket.findUnique({
+        where: { id: ticketId },
+        include: {
+          category: { select: { id: true, name: true } },
+          relatedSystem: { select: { id: true, name: true } },
+          requester: { select: { id: true, name: true, email: true, department: true } },
+          owner: { select: { id: true, name: true, email: true, role: true } },
+          attachments: { select: { id: true, fileName: true, fileSize: true, mimeType: true, isRemoved: true, removedAt: true, removalReason: true, createdAt: true } },
+          publicComments: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } },
+          internalNotes: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } },
+        },
+      }),
+      prisma.user.findMany({
+        where: { isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, email: true, role: true },
+      }),
+    ]);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+
+    return res.json({
+      ...ticket,
+      eligibleOwners,
+      allowedNextStatuses: allowedNextStatuses(ticket.currentStatus),
+    });
+  } catch (error) {
+    console.error('Error fetching staff ticket detail:', error);
+    return res.status(500).json({ error: 'Failed to fetch staff ticket detail.' });
+  }
+});
+
+// POST /api/staff/tickets/:id/claim — atomically claim an unassigned ticket
+app.post('/api/staff/tickets/:id/claim', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const expectedUpdatedAt = typeof req.body?.expectedUpdatedAt === 'string' ? new Date(req.body.expectedUpdatedAt) : undefined;
+  if (!Number.isInteger(ticketId) || ticketId <= 0) {
+    return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  }
+  if (!expectedUpdatedAt || Number.isNaN(expectedUpdatedAt.getTime())) {
+    return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  }
+
+  try {
+    const claimed = await prisma.ticket.updateMany({
+      where: { id: ticketId, ownerId: null, updatedAt: expectedUpdatedAt },
+      data: { ownerId: req.auth!.user.id },
+    });
+    if (claimed.count === 1) {
+      const ticket = await prisma.ticket.findUnique({
+        where: { id: ticketId },
+        include: { owner: { select: { id: true, name: true, email: true, role: true } } },
+      });
+      return res.json(ticket);
+    }
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { ownerId: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (ticket.ownerId !== null) return res.status(409).json({ error: 'Ticket is already assigned.' });
+    return res.status(409).json({ error: 'Ticket has changed. Refresh and try again.' });
+  } catch (error) {
+    console.error('Error claiming ticket:', error);
+    return res.status(500).json({ error: 'Failed to claim ticket.' });
+  }
+});
+
+function parseExpectedUpdatedAt(value: unknown): Date | undefined {
+  if (typeof value !== 'string') return undefined;
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? undefined : timestamp;
+}
+
+async function staleTicketResponse(res: Response, ticketId: number) {
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+  return res.status(409).json({ error: 'Ticket has changed. Refresh and try again.' });
+}
+
+// PATCH /api/staff/tickets/:id/owner — assign, reassign, or unassign an eligible owner
+app.patch('/api/staff/tickets/:id/owner', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  const ownerId = req.body?.ownerId;
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  if (ownerId !== null && (!Number.isInteger(ownerId) || ownerId <= 0)) {
+    return res.status(400).json({ error: 'ownerId must be a positive integer or null.' });
+  }
+
+  try {
+    if (ownerId !== null) {
+      const owner = await prisma.user.findFirst({ where: { id: ownerId, isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } } });
+      if (!owner) return res.status(422).json({ error: 'ownerId must reference an active operational user.' });
+    }
+    const updated = await prisma.ticket.updateMany({ where: { id: ticketId, updatedAt: expectedUpdatedAt }, data: { ownerId } });
+    if (updated.count !== 1) return staleTicketResponse(res, ticketId);
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { owner: { select: { id: true, name: true, email: true, role: true } } } });
+    return res.json(ticket);
+  } catch (error) {
+    console.error('Error updating ticket owner:', error);
+    return res.status(500).json({ error: 'Failed to update ticket owner.' });
+  }
+});
+
+// PATCH /api/staff/tickets/:id/priority — update IT Priority without changing Requested Priority
+app.patch('/api/staff/tickets/:id/priority', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  const itPriority = typeof req.body?.itPriority === 'string' ? req.body.itPriority.trim().toUpperCase() as Priority : undefined;
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  if (!itPriority || !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(itPriority)) {
+    return res.status(400).json({ error: 'itPriority is invalid.' });
+  }
+
+  try {
+    const updated = await prisma.ticket.updateMany({ where: { id: ticketId, updatedAt: expectedUpdatedAt }, data: { itPriority } });
+    if (updated.count !== 1) return staleTicketResponse(res, ticketId);
+    return res.json(await prisma.ticket.findUnique({ where: { id: ticketId } }));
+  } catch (error) {
+    console.error('Error updating ticket priority:', error);
+    return res.status(500).json({ error: 'Failed to update ticket priority.' });
+  }
+});
+
+// PATCH /api/staff/tickets/:id/status — apply only an approved, current status transition
+app.patch('/api/staff/tickets/:id/status', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  const status = typeof req.body?.status === 'string' ? parseTicketStatus(req.body.status) : undefined;
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  if (!status) return res.status(400).json({ error: 'status is invalid.' });
+
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { currentStatus: true, ownerId: true, updatedAt: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (ticket.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return res.status(409).json({ error: 'Ticket has changed. Refresh and try again.' });
+    if (!isAllowedStatusTransition(ticket.currentStatus, status)) {
+      return res.status(422).json({ error: 'This status transition is not allowed.' });
+    }
+    if (transitionRequiresOwner(ticket.currentStatus, status) && ticket.ownerId === null) {
+      return res.status(422).json({ error: 'An owner is required for this status transition.' });
+    }
+    if (transitionRequiresConfirmation(status) && req.body?.confirmed !== true) {
+      return res.status(422).json({ error: 'Confirmation is required for this status transition.' });
+    }
+
+    const updated = await prisma.ticket.updateMany({ where: { id: ticketId, updatedAt: expectedUpdatedAt }, data: { currentStatus: status } });
+    if (updated.count !== 1) return staleTicketResponse(res, ticketId);
+    return res.json(await prisma.ticket.findUnique({ where: { id: ticketId } }));
+  } catch (error) {
+    console.error('Error updating ticket status:', error);
+    return res.status(500).json({ error: 'Failed to update ticket status.' });
+  }
+});
+
+// GET /api/tickets/:id/public-comments — requester owner and operational users only
+app.get('/api/tickets/:id/public-comments', requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (req.auth!.user.mustChangePassword) return res.status(403).json({ error: 'Password change is required before accessing this resource.' });
+    if (!(await canAccessTicketDiscussion(req, ticketId))) return res.status(404).json({ error: 'Ticket not found.' });
+    const comments = await prisma.publicComment.findMany({
+      where: { ticketId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } },
+    });
+    return res.json(comments);
+  } catch (error) {
+    console.error('Error fetching public comments:', error);
+    return res.status(500).json({ error: 'Failed to fetch public comments.' });
+  }
+});
+
+// POST /api/tickets/:id/public-comments — append-only shared discussion
+app.post('/api/tickets/:id/public-comments', requireTrustedOrigin, requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!content || content.length > 2000) return res.status(400).json({ error: 'Comment must contain 1 to 2,000 characters.' });
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (req.auth!.user.mustChangePassword) return res.status(403).json({ error: 'Password change is required before accessing this resource.' });
+    if (!(await canAccessTicketDiscussion(req, ticketId))) return res.status(404).json({ error: 'Ticket not found.' });
+    const comment = await prisma.publicComment.create({
+      data: { ticketId, authorId: req.auth!.user.id, content },
+      include: { author: { select: { id: true, name: true, role: true } } },
+    });
+    return res.status(201).json(comment);
+  } catch (error) {
+    console.error('Error creating public comment:', error);
+    return res.status(500).json({ error: 'Failed to create public comment.' });
+  }
+});
+
+// GET/POST /api/staff/tickets/:id/internal-notes — append-only operational collaboration
+app.get('/api/staff/tickets/:id/internal-notes', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+  const notes = await prisma.internalNote.findMany({
+    where: { ticketId }, orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } },
+  });
+  return res.json(notes);
+});
+
+app.post('/api/staff/tickets/:id/internal-notes', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!content || content.length > 4000) return res.status(400).json({ error: 'Internal note must contain 1 to 4,000 characters.' });
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+  const note = await prisma.internalNote.create({
+    data: { ticketId, authorId: req.auth!.user.id, content },
+    include: { author: { select: { id: true, name: true, role: true } } },
+  });
+  return res.status(201).json(note);
 });
 
 // GET /api/tickets — ดึงรายการตั๋วของผู้แจ้งซ่อม (Ownership Isolation, Search, Filter, Sort, Pagination)

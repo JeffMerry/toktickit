@@ -57,7 +57,7 @@ Complete one record after each PR is reviewed. Preserve the real review comment,
 | Changes After Review | TODO |
 | Outcome | Pending review |
 
-### PR 4 - `feature/14-lab3-requester-authorization` to `lab3-staging`
+### PR 4 - `feature/14-lab3-staff-ticket-workflow` to `lab3-staging`
 
 | Field | Detail |
 | :--- | :--- |
@@ -69,7 +69,7 @@ Complete one record after each PR is reviewed. Preserve the real review comment,
 | Changes After Review | TODO |
 | Outcome | Pending review |
 
-### PR 5 - `feature/15-lab3-staff-ticket-workflow` to `lab3-staging`
+### PR 5 - `feature/15-lab3-user-management` to `lab3-staging`
 
 | Field | Detail |
 | :--- | :--- |
@@ -81,19 +81,7 @@ Complete one record after each PR is reviewed. Preserve the real review comment,
 | Changes After Review | TODO |
 | Outcome | Pending review |
 
-### PR 6 - `feature/16-lab3-user-management` to `lab3-staging`
-
-| Field | Detail |
-| :--- | :--- |
-| Related Issue | TODO |
-| PR Link | TODO |
-| Reviewer | TODO |
-| Review Comment(s) | TODO |
-| My Response(s) | TODO |
-| Changes After Review | TODO |
-| Outcome | Pending review |
-
-### PR 7 - `feature/17-lab3-release-integration` to `lab3-staging`
+### PR 6 - `feature/16-lab3-release-integration` to `lab3-staging`
 
 | Field | Detail |
 | :--- | :--- |

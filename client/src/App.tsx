@@ -7,6 +7,9 @@ import { TicketDetailView, TicketDetailData } from './components/TicketDetailVie
 import { AttachmentSection } from './components/AttachmentSection';
 import { LoginPage } from './components/LoginPage';
 import { ChangePasswordPage } from './components/ChangePasswordPage';
+import { StaffTicketQueue } from './components/StaffTicketQueue';
+import { StaffTicketDetail } from './components/StaffTicketDetail';
+import { PublicCommentSection } from './components/PublicCommentSection';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
@@ -15,12 +18,13 @@ function MainApp() {
   const { user, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<ViewMode>('my-tickets');
   const activeView: ViewMode = user?.role === 'IT_STAFF'
-    ? 'staff-queue'
+    ? (currentView === 'staff-ticket-detail' ? 'staff-ticket-detail' : 'staff-queue')
     : user?.role === 'ADMINISTRATOR'
       ? 'user-management'
       : currentView;
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+  const [selectedStaffTicketId, setSelectedStaffTicketId] = useState<number | null>(null);
 
   // Ticket Detail States
   const [ticketDetail, setTicketDetail] = useState<TicketDetailData | null>(null);
@@ -394,23 +398,27 @@ function MainApp() {
                 ticket={ticketDetail}
                 onBack={() => setCurrentView('my-tickets')}
               >
-                <AttachmentSection
-                  ticketId={ticketDetail.id}
-                  attachments={ticketDetail.attachments || []}
-                  onAttachmentChanged={() => {
-                    if (selectedTicketId) fetchTicketDetail(selectedTicketId);
-                  }}
-                />
+                <>
+                  <AttachmentSection
+                    ticketId={ticketDetail.id}
+                    attachments={ticketDetail.attachments || []}
+                    onAttachmentChanged={() => {
+                      if (selectedTicketId) fetchTicketDetail(selectedTicketId);
+                    }}
+                  />
+                  <PublicCommentSection ticketId={ticketDetail.id} />
+                </>
               </TicketDetailView>
             ) : null}
           </div>
         )}
 
         {activeView === 'staff-queue' && (
-          <RolePlaceholder
-            title="Ticket Queue"
-            description="The staff ticket queue will be available in the next Lab 3 workflow issue."
-          />
+          <StaffTicketQueue onSelectTicket={(ticketId) => { setSelectedStaffTicketId(ticketId); setCurrentView('staff-ticket-detail'); }} />
+        )}
+
+        {activeView === 'staff-ticket-detail' && selectedStaffTicketId && (
+          <StaffTicketDetail ticketId={selectedStaffTicketId} onBack={() => setCurrentView('staff-queue')} />
         )}
 
         {activeView === 'user-management' && (
