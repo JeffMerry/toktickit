@@ -545,24 +545,38 @@ app.patch('/api/admin/users/:id', requireTrustedOrigin, requireAuthentication, r
   if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
 
   try {
-    const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true, isActive: true, updatedAt: true } });
-    if (!target) return res.status(404).json({ error: 'User not found.' });
-    if (target.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return res.status(409).json({ error: 'User has changed. Refresh and try again.' });
-    if (userId === req.auth!.user.id && !isActive) return res.status(409).json({ error: 'Administrators cannot deactivate their own account.' });
+    const outcome = await prisma.$transaction(async (tx) => {
+      // Every mutation which could remove an active Administrator shares this
+      // transaction-level lock. PostgreSQL releases it at commit/rollback, so
+      // a second request must re-check the count after the first one commits.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(1500033)`;
 
-    const removesActiveAdministrator = target.role === 'ADMINISTRATOR' && target.isActive && (role !== 'ADMINISTRATOR' || !isActive);
-    if (removesActiveAdministrator) {
-      const activeAdminCount = await prisma.user.count({ where: { role: 'ADMINISTRATOR', isActive: true } });
-      if (activeAdminCount <= 1) return res.status(409).json({ error: 'At least one active administrator is required.' });
-    }
+      const target = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true, isActive: true, updatedAt: true } });
+      if (!target) return { kind: 'not-found' as const };
+      if (target.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return { kind: 'stale' as const };
+      if (userId === req.auth!.user.id && !isActive) return { kind: 'self-deactivation' as const };
 
-    const updated = await prisma.user.updateMany({
-      where: { id: userId, updatedAt: expectedUpdatedAt },
-      data: { name, email, normalizedEmail: normalizeEmail(email), role: role as UserRole, isActive },
+      const removesActiveAdministrator = target.role === 'ADMINISTRATOR' && target.isActive && (role !== 'ADMINISTRATOR' || !isActive);
+      if (removesActiveAdministrator) {
+        const activeAdminCount = await tx.user.count({ where: { role: 'ADMINISTRATOR', isActive: true } });
+        if (activeAdminCount <= 1) return { kind: 'last-administrator' as const };
+      }
+
+      const updated = await tx.user.updateMany({
+        where: { id: userId, updatedAt: expectedUpdatedAt },
+        data: { name, email, normalizedEmail: normalizeEmail(email), role: role as UserRole, isActive },
+      });
+      if (updated.count !== 1) return { kind: 'stale' as const };
+      if (target.isActive && !isActive) await tx.session.deleteMany({ where: { userId } });
+      const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: adminUserSelect });
+      return { kind: 'updated' as const, user };
     });
-    if (updated.count !== 1) return res.status(409).json({ error: 'User has changed. Refresh and try again.' });
-    if (target.isActive && !isActive) await prisma.session.deleteMany({ where: { userId } });
-    return res.json(await prisma.user.findUnique({ where: { id: userId }, select: adminUserSelect }));
+
+    if (outcome.kind === 'not-found') return res.status(404).json({ error: 'User not found.' });
+    if (outcome.kind === 'stale') return res.status(409).json({ error: 'User has changed. Refresh and try again.' });
+    if (outcome.kind === 'self-deactivation') return res.status(409).json({ error: 'Administrators cannot deactivate their own account.' });
+    if (outcome.kind === 'last-administrator') return res.status(409).json({ error: 'At least one active administrator is required.' });
+    return res.json(outcome.user);
   } catch (error: any) {
     if (error?.code === 'P2002') return res.status(409).json({ error: 'A user with this email already exists.' });
     console.error('Error updating user:', error);

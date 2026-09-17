@@ -9,8 +9,10 @@ let adminCookie = '';
 let staffCookie = '';
 let requesterCookie = '';
 let secondRequesterCookie = '';
+let concurrentAdminCookie = '';
 let userIds: number[] = [];
 let adminId = 0;
+let concurrentAdminId = 0;
 let staffId = 0;
 let secondRequesterId = 0;
 
@@ -22,17 +24,19 @@ async function sessionCookie(userId: number) {
 
 beforeAll(async () => {
   const passwordHash = await hashPassword('ChangeMe123!');
-  const [admin, staff, requester, secondRequester] = await Promise.all([
+  const [admin, concurrentAdmin, staff, requester, secondRequester] = await Promise.all([
     prisma.user.create({ data: { name: 'Admin Manager', email: 'admin.manager@example.test', normalizedEmail: 'admin.manager@example.test', passwordHash, role: 'ADMINISTRATOR', mustChangePassword: false } }),
+    prisma.user.create({ data: { name: 'Concurrent Admin', email: 'concurrent.admin@example.test', normalizedEmail: 'concurrent.admin@example.test', passwordHash, role: 'ADMINISTRATOR', mustChangePassword: false } }),
     prisma.user.create({ data: { name: 'Admin List Staff', email: 'admin.list.staff@example.test', normalizedEmail: 'admin.list.staff@example.test', passwordHash, role: 'IT_STAFF', mustChangePassword: false } }),
     prisma.user.create({ data: { name: 'Admin List Requester', email: 'admin.list.requester@example.test', normalizedEmail: 'admin.list.requester@example.test', passwordHash, role: 'REQUESTER', mustChangePassword: false } }),
     prisma.user.create({ data: { name: 'Second Requester', email: 'second.requester@example.test', normalizedEmail: 'second.requester@example.test', passwordHash, role: 'REQUESTER', mustChangePassword: false } }),
   ]);
   adminId = admin.id;
+  concurrentAdminId = concurrentAdmin.id;
   staffId = staff.id;
   secondRequesterId = secondRequester.id;
-  userIds = [admin.id, staff.id, requester.id, secondRequester.id];
-  [adminCookie, staffCookie, requesterCookie, secondRequesterCookie] = await Promise.all([sessionCookie(admin.id), sessionCookie(staff.id), sessionCookie(requester.id), sessionCookie(secondRequester.id)]);
+  userIds = [admin.id, concurrentAdmin.id, staff.id, requester.id, secondRequester.id];
+  [adminCookie, concurrentAdminCookie, staffCookie, requesterCookie, secondRequesterCookie] = await Promise.all([sessionCookie(admin.id), sessionCookie(concurrentAdmin.id), sessionCookie(staff.id), sessionCookie(requester.id), sessionCookie(secondRequester.id)]);
 });
 
 afterAll(async () => {
@@ -104,6 +108,31 @@ describe('administrator user list API', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ id: secondRequesterId, isActive: false });
     await request(app).get('/api/auth/me').set('Cookie', secondRequesterCookie).expect(401);
+  });
+
+  it('serializes concurrent administrator removals so one active administrator remains', async () => {
+    const externalActiveAdmins = await prisma.user.findMany({
+      where: { role: 'ADMINISTRATOR', isActive: true, id: { notIn: [adminId, concurrentAdminId] } },
+      select: { id: true },
+    });
+    await prisma.user.updateMany({ where: { id: { in: externalActiveAdmins.map((user) => user.id) } }, data: { isActive: false } });
+
+    try {
+      const [firstAdmin, secondAdmin] = await Promise.all([
+        prisma.user.findUniqueOrThrow({ where: { id: adminId }, select: { name: true, email: true, role: true, updatedAt: true } }),
+        prisma.user.findUniqueOrThrow({ where: { id: concurrentAdminId }, select: { name: true, email: true, role: true, updatedAt: true } }),
+      ]);
+      const [firstResult, secondResult] = await Promise.all([
+        request(app).patch(`/api/admin/users/${concurrentAdminId}`).set('Cookie', adminCookie).send({ ...secondAdmin, isActive: false, expectedUpdatedAt: secondAdmin.updatedAt.toISOString() }),
+        request(app).patch(`/api/admin/users/${adminId}`).set('Cookie', concurrentAdminCookie).send({ ...firstAdmin, isActive: false, expectedUpdatedAt: firstAdmin.updatedAt.toISOString() }),
+      ]);
+
+      expect([firstResult.status, secondResult.status].sort()).toEqual([200, 409]);
+      await expect(prisma.user.count({ where: { role: 'ADMINISTRATOR', isActive: true } })).resolves.toBe(1);
+    } finally {
+      await prisma.user.updateMany({ where: { id: { in: [adminId, concurrentAdminId, ...externalActiveAdmins.map((user) => user.id)] } }, data: { role: 'ADMINISTRATOR', isActive: true } });
+      [adminCookie, concurrentAdminCookie] = await Promise.all([sessionCookie(adminId), sessionCookie(concurrentAdminId)]);
+    }
   });
 
   it('resets an initial password, requires a change, and revokes current sessions', async () => {
