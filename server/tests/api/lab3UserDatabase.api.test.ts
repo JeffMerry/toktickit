@@ -6,14 +6,33 @@ const prisma = new PrismaClient();
 describe('Lab 3 user database seed', () => {
   it('provides active and inactive accounts for every required role', async () => {
     const users = await prisma.user.findMany({
-      select: { role: true, isActive: true },
+      where: {
+        email: {
+          in: [
+            'jennifer.anderson@kmutt.ac.th',
+            'michael.brown@kmutt.ac.th',
+            'sarah.johnson@kmutt.ac.th',
+            'david.lee@kmutt.ac.th',
+            'inactive.user@kmutt.ac.th',
+            'mary.support@kmutt.ac.th',
+            'somchai.technician@kmutt.ac.th',
+            'niran.engineer@kmutt.ac.th',
+            'inactive.technician@kmutt.ac.th',
+            'admin@kmutt.ac.th',
+          ],
+        },
+      },
+      select: { email: true, role: true, isActive: true },
     });
 
-    expect(users.filter((user) => user.role === UserRole.REQUESTER && user.isActive)).toHaveLength(4);
-    expect(users.filter((user) => user.role === UserRole.REQUESTER && !user.isActive)).toHaveLength(1);
-    expect(users.filter((user) => user.role === UserRole.IT_STAFF && user.isActive)).toHaveLength(3);
-    expect(users.filter((user) => user.role === UserRole.IT_STAFF && !user.isActive)).toHaveLength(1);
-    expect(users.filter((user) => user.role === UserRole.ADMINISTRATOR && user.isActive)).toHaveLength(1);
+    expect(users).toHaveLength(10);
+    expect(users).toEqual(expect.arrayContaining([
+      expect.objectContaining({ email: 'jennifer.anderson@kmutt.ac.th', role: UserRole.REQUESTER, isActive: true }),
+      expect.objectContaining({ email: 'inactive.user@kmutt.ac.th', role: UserRole.REQUESTER, isActive: false }),
+      expect.objectContaining({ email: 'mary.support@kmutt.ac.th', role: UserRole.IT_STAFF, isActive: true }),
+      expect.objectContaining({ email: 'inactive.technician@kmutt.ac.th', role: UserRole.IT_STAFF, isActive: false }),
+      expect.objectContaining({ email: 'admin@kmutt.ac.th', role: UserRole.ADMINISTRATOR, isActive: true }),
+    ]));
   });
 
   it('persists enum-backed ticket values and staff discussion relations', async () => {
