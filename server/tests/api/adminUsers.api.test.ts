@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
 import app from '../../src/app';
-import { createSessionToken, hashPassword } from '../../src/utils/auth';
+import { createSessionToken, hashPassword, verifyPassword } from '../../src/utils/auth';
 
 const prisma = new PrismaClient();
 let adminCookie = '';
@@ -48,5 +48,25 @@ describe('administrator user list API', () => {
     await request(app).get('/api/admin/users').set('Cookie', staffCookie).expect(403);
     await request(app).get('/api/admin/users').set('Cookie', requesterCookie).expect(403);
     await request(app).get('/api/admin/users').expect(401);
+  });
+
+  it('creates a user with a hashed initial password and change requirement', async () => {
+    const response = await request(app)
+      .post('/api/admin/users')
+      .set('Cookie', adminCookie)
+      .send({ name: 'Created Staff', email: 'created.staff@example.test', role: 'IT_STAFF', isActive: true, initialPassword: 'CreatedPassword123!' });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ email: 'created.staff@example.test', role: 'IT_STAFF', isActive: true, mustChangePassword: true });
+    expect(response.body).not.toHaveProperty('passwordHash');
+    userIds.push(response.body.id);
+    const saved = await prisma.user.findUniqueOrThrow({ where: { id: response.body.id }, select: { passwordHash: true } });
+    await expect(verifyPassword('CreatedPassword123!', saved.passwordHash)).resolves.toBe(true);
+
+    await request(app)
+      .post('/api/admin/users')
+      .set('Cookie', adminCookie)
+      .send({ name: 'Duplicate Staff', email: 'CREATED.STAFF@example.test', role: 'IT_STAFF', isActive: true, initialPassword: 'CreatedPassword123!' })
+      .expect(409);
   });
 });

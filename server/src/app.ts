@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
-import type { Prisma, Priority, TicketStatus } from '@prisma/client';
+import type { Prisma, Priority, TicketStatus, UserRole } from '@prisma/client';
 import { generateTicketNumber } from './utils/ticketNumber';
 import {
   createSessionToken,
@@ -498,6 +498,34 @@ app.get('/api/admin/users', requireAuthentication, requireAdministrator, async (
   } catch (error) {
     console.error('Error fetching admin users:', error);
     return res.status(500).json({ error: 'Failed to fetch users.' });
+  }
+});
+
+// POST /api/admin/users — create a user with an initial password
+app.post('/api/admin/users', requireTrustedOrigin, requireAuthentication, requireAdministrator, async (req: AuthenticatedRequest, res) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+  const role = req.body?.role;
+  const isActive = req.body?.isActive;
+  const initialPassword = req.body?.initialPassword;
+  if (name.length < 2 || name.length > 100) return res.status(400).json({ error: 'name must contain 2 to 100 characters.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'email is invalid.' });
+  if (typeof role !== 'string' || !['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'].includes(role)) return res.status(400).json({ error: 'role is invalid.' });
+  if (typeof isActive !== 'boolean') return res.status(400).json({ error: 'isActive must be a boolean.' });
+  if (typeof initialPassword !== 'string') return res.status(400).json({ error: 'initialPassword is required.' });
+  const passwordError = validatePassword(initialPassword);
+  if (passwordError) return res.status(400).json({ error: passwordError });
+
+  try {
+    const user = await prisma.user.create({
+      data: { name, email, normalizedEmail: normalizeEmail(email), role: role as UserRole, isActive, passwordHash: await hashPassword(initialPassword), mustChangePassword: true },
+      select: adminUserSelect,
+    });
+    return res.status(201).json(user);
+  } catch (error: any) {
+    if (error?.code === 'P2002') return res.status(409).json({ error: 'A user with this email already exists.' });
+    console.error('Error creating user:', error);
+    return res.status(500).json({ error: 'Failed to create user.' });
   }
 });
 
