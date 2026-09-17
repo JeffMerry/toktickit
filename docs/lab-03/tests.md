@@ -204,9 +204,9 @@ The E2E suite is serial and covers these browser flows:
 - `e2e/lab-03/staff-ticket-flow.spec.ts` — Queue filtering, claim, IT Priority, status change, Public Comment, and Internal Note.
 - `e2e/lab-03/user-administration.spec.ts` — create, search, edit, and initial-password reset for an account.
 
-`playwright.config.ts` starts the local server and client for the test run. Set
-`E2E_REUSE_SERVER=true` (and, if needed, `E2E_BASE_URL`) only when
-intentionally targeting an already-running local app.
+`playwright.config.ts` starts the local server and client for the test run, or
+reuses an already-running local instance outside CI. Use `E2E_BASE_URL` only
+when intentionally targeting a different local app URL.
 
 Migration verification additionally runs Prisma migration and seed commands against a disposable test database. The final results table must record the actual command, commit SHA, date, and Pass/Fail outcome from the integrated branch.
 

@@ -6,7 +6,7 @@ test.describe('Lab 3 E2E: requester ticket and collaboration flow', () => {
     await signInWithInitialPassword(page, e2eAccounts.requesterTwo);
     await expect(page.getByRole('heading', { name: 'My Tickets' })).toBeVisible();
 
-    await page.getByRole('button', { name: /create ticket/i }).click();
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Create Ticket', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Create IT Support Ticket' })).toBeVisible();
 
     const selectors = page.locator('select');

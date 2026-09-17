@@ -16,8 +16,9 @@ test.describe('Lab 3 E2E: IT Staff ticket operations', () => {
     await page.getByRole('button', { name: 'Claim Ticket' }).click();
     await expect(page.getByText('Mary Support', { exact: true })).toBeVisible();
 
-    await page.getByLabel('IT Priority').selectOption('URGENT');
-    await expect(page.getByText('URGENT', { exact: true })).toBeVisible();
+    const itPriority = page.getByLabel('IT Priority');
+    await itPriority.selectOption('URGENT');
+    await expect(itPriority).toHaveValue('URGENT');
 
     await page.getByLabel('Next status').selectOption('OPEN');
     await page.getByRole('button', { name: 'Update status' }).click();

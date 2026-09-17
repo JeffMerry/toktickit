@@ -35,8 +35,8 @@ export async function signIn(page: Page, email: string, password: string) {
 export async function changeTemporaryPassword(page: Page, replacementPassword: string) {
   await expect(page.getByRole('heading', { name: 'Set a new password' })).toBeVisible();
   await page.getByLabel('Current password').fill(temporaryPassword);
-  await page.getByLabel('New password').fill(replacementPassword);
-  await page.getByLabel('Confirm new password').fill(replacementPassword);
+  await page.getByRole('textbox', { name: 'New password', exact: true }).fill(replacementPassword);
+  await page.getByRole('textbox', { name: 'Confirm new password', exact: true }).fill(replacementPassword);
   await page.getByRole('button', { name: 'Save new password' }).click();
 }
 

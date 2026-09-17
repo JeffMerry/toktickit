@@ -195,7 +195,7 @@ function MainApp() {
         }}
       />
 
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px' }}>
+      <main style={{ width: '100%', maxWidth: '1100px', boxSizing: 'border-box', margin: '0 auto', padding: '24px' }}>
         {/* 1. My Tickets Screen */}
         {activeView === 'my-tickets' && (
           <div>
