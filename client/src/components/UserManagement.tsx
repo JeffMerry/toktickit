@@ -144,9 +144,9 @@ export function UserManagement() {
         <label style={styles.label}>Role<select aria-label="Role filter" value={roleFilter} onChange={(event) => { setRoleFilter(event.target.value); setPage(1); }} style={styles.input}><option value="">All roles</option>{roles.map((role) => <option key={role} value={role}>{role.replace('_', ' ')}</option>)}</select></label>
         <button type="submit" style={styles.secondaryButton}>Search</button>
       </form>
-      {isLoading ? <p style={styles.state}>Loading users...</p> : listError ? <div role="alert" style={styles.error}><p>{listError}</p><button type="button" onClick={() => void loadUsers()} style={styles.primaryButton}>Retry</button></div> : users.length === 0 ? <p style={styles.state}>No users match the current filters.</p> : <div style={styles.userList}>
-        <div aria-hidden="true" style={styles.listHeader}><strong>Name</strong><strong>Email</strong><strong>Role</strong><strong>Status</strong><span /></div>
-        {users.map((user) => <article key={user.id} style={styles.userCard}>
+      {isLoading ? <p style={styles.state}>Loading users...</p> : listError ? <div role="alert" style={styles.error}><p>{listError}</p><button type="button" onClick={() => void loadUsers()} style={styles.primaryButton}>Retry</button></div> : users.length === 0 ? <p style={styles.state}>No users match the current filters.</p> : <div className="user-management-list" style={styles.userList}>
+        <div aria-hidden="true" className="user-management-list-header" style={styles.listHeader}><strong>Name</strong><strong>Email</strong><strong>Role</strong><strong>Status</strong><span /></div>
+        {users.map((user) => <article key={user.id} className="user-management-card" style={styles.userCard}>
           <div><span style={styles.mobileLabel}>Name</span><strong>{user.name}</strong>{user.mustChangePassword && <small style={styles.passwordFlag}>Password change required</small>}</div>
           <div><span style={styles.mobileLabel}>Email</span><span style={styles.wrap}>{user.email}</span></div>
           <div><span style={styles.mobileLabel}>Role</span><span style={styles.roleBadge}>{user.role.replace('_', ' ')}</span></div>
