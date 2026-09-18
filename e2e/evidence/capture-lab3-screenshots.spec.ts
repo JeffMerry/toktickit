@@ -65,6 +65,10 @@ test.describe('Lab 3 release evidence capture', () => {
     await ticketCard.getByRole('button', { name: 'View operational detail' }).click();
     await expect(page.getByRole('heading', { name: 'Laptop keyboard key is loose' })).toBeVisible();
     await page.screenshot({ path: screenshotPath('staff-ticket-detail', 'staff-detail-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.screenshot({ path: screenshotPath('staff-ticket-detail', 'staff-detail-tablet.png'), fullPage: true });
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.screenshot({ path: screenshotPath('staff-ticket-detail', 'staff-detail-mobile.png'), fullPage: true });
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await signOut(page);

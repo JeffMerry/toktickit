@@ -28,6 +28,11 @@ seeded local database; its real UI screenshots are listed below.
 After the capture-tool separation, `npm run test:e2e` was repeated from a
 fresh seed on 2026-09-18 and passed all 4 regression journeys in 23.4 seconds.
 
+Review follow-up verification ran on 2026-09-19 after adding Staff Ticket
+Detail tablet and mobile evidence: `npm run capture:lab3-evidence` passed its
+single capture flow in 12.4 seconds, and `npm run test:e2e` passed all 4
+regression journeys in 18.9 seconds from a freshly seeded database.
+
 ## Merged Feature Evidence
 
 | Feature | Issue | Pull Request | Merge target | Outcome |
@@ -52,7 +57,7 @@ from the regression E2E suite and writes the images below under
 | Login and invalid-sign-in message | Captured | Captured | Captured | Labels, focus, safe error | `authentication/login-invalid-{desktop,tablet,mobile}.png` | Captured; keyboard review remains manual |
 | Mandatory password change | Captured | Optional | Captured | Focus order, blocked navigation | `authentication/change-password-{desktop,mobile}.png` | Captured; keyboard review remains manual |
 | Requester Ticket detail and comments | Captured | Optional | Captured | No Internal Notes shown | `requester-ticket-detail/requester-detail-{desktop,mobile}.png` | Captured; keyboard review remains manual |
-| Staff Queue and Ticket workflow | Captured | Captured | Captured | Queue filters, badges, controls | `staff-queue/queue-{desktop,tablet,mobile}.png`, `staff-ticket-detail/staff-detail-desktop.png` | Captured; keyboard review remains manual |
+| Staff Queue and Ticket workflow | Captured | Captured | Captured | Queue filters, badges, controls | `staff-queue/queue-{desktop,tablet,mobile}.png`, `staff-ticket-detail/staff-detail-{desktop,tablet,mobile}.png` | Captured; keyboard review remains manual |
 | Administrator User Management | Captured | Optional | Captured | Form labels, safety conflict, no overflow | `user-management/users-{desktop,mobile}.png` | Captured; keyboard review remains manual |
 
 ## Release PR Gate
