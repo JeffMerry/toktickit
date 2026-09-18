@@ -22,8 +22,11 @@ The exact commands and results are recorded in [tests.md](tests.md). No failing 
 
 The E2E suite intentionally creates local test data and changes seeded
 temporary passwords. It is therefore run last, after the clean server/client
-verification. Required manual screenshots remain pending and are not claimed
-by this automated result.
+verification. A separate Chromium capture run was performed from a freshly
+seeded local database; its real UI screenshots are listed below.
+
+After the capture-tool separation, `npm run test:e2e` was repeated from a
+fresh seed on 2026-09-18 and passed all 4 regression journeys in 23.4 seconds.
 
 ## Merged Feature Evidence
 
@@ -37,17 +40,20 @@ by this automated result.
 
 Detailed review comments, responses, and outcomes are recorded in [reviewer.md](reviewer.md).
 
-## Required Manual Screenshot and Accessibility Evidence
+## Final Screenshot and Accessibility Evidence
 
-Capture these from the final release candidate after `feature/16-lab3-release-integration` is merged into `lab3-staging`. Store files under `artifacts/lab-03/screenshots/` using the locations below, and add links to the release PR description.
+Captured on 2026-09-18 (Asia/Bangkok) with `npm run capture:lab3-evidence`
+against the local Chromium application. The command is deliberately separate
+from the regression E2E suite and writes the images below under
+`artifacts/lab-03/screenshots/`.
 
 | Screen / scenario | Desktop | Tablet | Mobile | Keyboard / feedback check | Evidence location | Status |
 | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
-| Login and invalid-sign-in message | Required | Required | Required | Labels, focus, safe error | `authentication/` | Pending manual capture |
-| Mandatory password change | Required | Optional | Required | Focus order, blocked navigation | `authentication/` | Pending manual capture |
-| Requester Ticket detail and comments | Required | Optional | Required | No Internal Notes shown | `requester-ticket-detail/` | Pending manual capture |
-| Staff Queue and Ticket workflow | Required | Required | Required | Queue filters, badges, controls | `staff-queue/`, `staff-ticket-detail/` | Pending manual capture |
-| Administrator User Management | Required | Optional | Required | Form labels, safety conflict, no overflow | `user-management/` | Pending manual capture |
+| Login and invalid-sign-in message | Captured | Captured | Captured | Labels, focus, safe error | `authentication/login-invalid-{desktop,tablet,mobile}.png` | Captured; keyboard review remains manual |
+| Mandatory password change | Captured | Optional | Captured | Focus order, blocked navigation | `authentication/change-password-{desktop,mobile}.png` | Captured; keyboard review remains manual |
+| Requester Ticket detail and comments | Captured | Optional | Captured | No Internal Notes shown | `requester-ticket-detail/requester-detail-{desktop,mobile}.png` | Captured; keyboard review remains manual |
+| Staff Queue and Ticket workflow | Captured | Captured | Captured | Queue filters, badges, controls | `staff-queue/queue-{desktop,tablet,mobile}.png`, `staff-ticket-detail/staff-detail-desktop.png` | Captured; keyboard review remains manual |
+| Administrator User Management | Captured | Optional | Captured | Form labels, safety conflict, no overflow | `user-management/users-{desktop,mobile}.png` | Captured; keyboard review remains manual |
 
 ## Release PR Gate
 

@@ -1,22 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Lab 3 E2E tests deliberately do not start or seed services automatically.
- * The suite mutates local development fixtures, so the documented seed command
- * must be run explicitly against the intended local database before execution.
+ * Capture configuration is intentionally separate from the regression suite.
+ * It writes release screenshots after an explicit local database seed.
  */
 export default defineConfig({
   testDir: './e2e',
-  testIgnore: '**/evidence/**',
   timeout: 45_000,
-  fullyParallel: false,
   workers: 1,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [['list']],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
-    trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
   },
   webServer: [
     {

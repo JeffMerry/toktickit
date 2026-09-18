@@ -3,6 +3,7 @@
     "@playwright/test": "^1.62.1"
   },
   "scripts": {
-    "test:e2e": "playwright test e2e/lab-03"
+    "test:e2e": "playwright test e2e/lab-03",
+    "capture:lab3-evidence": "playwright test --config=playwright.evidence.config.ts e2e/evidence/capture-lab3-screenshots.spec.ts"
   }
 }
