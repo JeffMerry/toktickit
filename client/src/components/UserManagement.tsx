@@ -38,6 +38,13 @@ export function UserManagement() {
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCompact, setIsCompact] = useState(() => window.innerWidth <= 767);
+
+  useEffect(() => {
+    const updateLayout = () => setIsCompact(window.innerWidth <= 767);
+    window.addEventListener('resize', updateLayout);
+    return () => window.removeEventListener('resize', updateLayout);
+  }, []);
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
@@ -145,13 +152,13 @@ export function UserManagement() {
         <button type="submit" style={styles.secondaryButton}>Search</button>
       </form>
       {isLoading ? <p style={styles.state}>Loading users...</p> : listError ? <div role="alert" style={styles.error}><p>{listError}</p><button type="button" onClick={() => void loadUsers()} style={styles.primaryButton}>Retry</button></div> : users.length === 0 ? <p style={styles.state}>No users match the current filters.</p> : <div className="user-management-list" style={styles.userList}>
-        <div aria-hidden="true" className="user-management-list-header" style={styles.listHeader}><strong>Name</strong><strong>Email</strong><strong>Role</strong><strong>Status</strong><span /></div>
-        {users.map((user) => <article key={user.id} className="user-management-card" style={styles.userCard}>
+        <div aria-hidden="true" className="user-management-list-header" style={isCompact ? { display: 'none' } : styles.listHeader}><strong>Name</strong><strong>Email</strong><strong>Role</strong><strong>Status</strong><span /></div>
+        {users.map((user) => <article key={user.id} className="user-management-card" style={isCompact ? { ...styles.userCard, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } : styles.userCard}>
           <div><span style={styles.mobileLabel}>Name</span><strong>{user.name}</strong>{user.mustChangePassword && <small style={styles.passwordFlag}>Password change required</small>}</div>
           <div><span style={styles.mobileLabel}>Email</span><span style={styles.wrap}>{user.email}</span></div>
           <div><span style={styles.mobileLabel}>Role</span><span style={styles.roleBadge}>{user.role.replace('_', ' ')}</span></div>
           <div><span style={styles.mobileLabel}>Status</span><span style={user.isActive ? styles.activeBadge : styles.inactiveBadge}>{user.isActive ? 'Active' : 'Inactive'}</span></div>
-          <button type="button" onClick={() => startEdit(user)} style={styles.editButton}>Edit</button>
+          <button type="button" onClick={() => startEdit(user)} style={isCompact ? { ...styles.editButton, gridColumn: '1 / -1', width: '100%' } : styles.editButton}>Edit</button>
         </article>)}
       </div>}
       {!isLoading && !listError && <nav aria-label="User pagination" style={styles.pagination}><button type="button" disabled={pagination.page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} style={styles.secondaryButton}>Previous page</button><span>{pagination.total} user{pagination.total === 1 ? '' : 's'} · Page {pagination.page} of {pagination.totalPages}</span><button type="button" disabled={pagination.page >= pagination.totalPages} onClick={() => setPage((value) => Math.min(pagination.totalPages, value + 1))} style={styles.secondaryButton}>Next page</button></nav>}
