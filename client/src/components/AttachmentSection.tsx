@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AttachmentData } from './TicketDetailView';
-import { useRequester } from '../context/RequesterContext';
+import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
 
 interface AttachmentSectionProps {
   ticketId: number;
@@ -13,7 +14,7 @@ export const AttachmentSection: React.FC<AttachmentSectionProps> = ({
   attachments,
   onAttachmentChanged,
 }) => {
-  const { selectedRequester } = useRequester();
+  const { user } = useAuth();
 
   // Active & Soft-removed files filtering
   const activeAttachments = attachments.filter((a) => !a.isRemoved);
@@ -33,15 +34,14 @@ export const AttachmentSection: React.FC<AttachmentSectionProps> = ({
 
   // Download Handler (BR-12, BR-13)
   const handleDownload = async (attachment: AttachmentData) => {
-    if (!selectedRequester) return;
+    if (!user) return;
     if (attachment.isRemoved) {
       alert('Download Blocked: This file has been soft-removed.');
       return;
     }
 
     try {
-      const downloadUrl = `http://localhost:5000/api/attachments/${attachment.id}/download?requesterId=${selectedRequester.id}`;
-      const response = await fetch(downloadUrl);
+      const response = await apiFetch(`/api/attachments/${attachment.id}/download`);
 
       if (!response.ok) {
         const errData = await response.json();
@@ -65,7 +65,7 @@ export const AttachmentSection: React.FC<AttachmentSectionProps> = ({
   // Submit Soft Removal Handler (BR-12)
   const handleConfirmRemoval = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetAttachment || !selectedRequester) return;
+    if (!targetAttachment || !user) return;
 
     const trimmed = removalReason.trim();
     if (!trimmed || trimmed.length < 3) {
@@ -77,13 +77,10 @@ export const AttachmentSection: React.FC<AttachmentSectionProps> = ({
     setRemovalError(null);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/attachments/${targetAttachment.id}`, {
+      const res = await apiFetch(`/api/attachments/${targetAttachment.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requesterId: selectedRequester.id,
-          removalReason: trimmed,
-        }),
+        body: JSON.stringify({ removalReason: trimmed }),
       });
 
       const data = await res.json();
@@ -105,17 +102,16 @@ export const AttachmentSection: React.FC<AttachmentSectionProps> = ({
   // Submit Upload Attachment Handler (BR-09, BR-10, BR-11)
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile || !selectedRequester) return;
+    if (!selectedFile || !user) return;
 
     setUploading(true);
     setUploadError(null);
 
     try {
       const formData = new FormData();
-      formData.append('requesterId', String(selectedRequester.id));
       formData.append('attachments', selectedFile);
 
-      const res = await fetch(`http://localhost:5000/api/tickets/${ticketId}/attachments`, {
+      const res = await apiFetch(`/api/tickets/${ticketId}/attachments`, {
         method: 'POST',
         body: formData,
       });

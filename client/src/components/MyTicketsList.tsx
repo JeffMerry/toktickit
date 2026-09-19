@@ -13,7 +13,7 @@ export interface TicketItem {
   summary: string;
   description: string;
   requestedPriority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' | string;
-  currentStatus: 'New' | 'In Progress' | 'Resolved' | 'Closed' | string;
+  currentStatus: 'NEW' | 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_REQUESTER' | 'RESOLVED' | 'CLOSED' | 'REOPENED' | 'CANCELLED' | string;
   createdAt: string;
   updatedAt?: string;
   category: { id: number; name: string };
@@ -122,19 +122,33 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
 
   // Helper for Status Badges
   const getStatusBadge = (status: string) => {
+    const normalizedStatus = status.toUpperCase().replace(/\s+/g, '_');
+    const statusLabels: Record<string, string> = {
+      NEW: 'New',
+      OPEN: 'Open',
+      IN_PROGRESS: 'In Progress',
+      WAITING_FOR_REQUESTER: 'Waiting for Requester',
+      RESOLVED: 'Resolved',
+      CLOSED: 'Closed',
+      REOPENED: 'Reopened',
+      CANCELLED: 'Cancelled',
+    };
     let bg = '#EAF6EF';
     let color = '#006B3C';
 
-    if (status === 'New') {
+    if (normalizedStatus === 'NEW') {
       bg = '#EAF6EF';
       color = '#006B3C';
-    } else if (status === 'In Progress') {
+    } else if (normalizedStatus === 'OPEN' || normalizedStatus === 'IN_PROGRESS') {
       bg = '#E0F2FE';
       color = '#0369A1';
-    } else if (status === 'Resolved') {
+    } else if (normalizedStatus === 'WAITING_FOR_REQUESTER') {
+      bg = '#FEF3C7';
+      color = '#92400E';
+    } else if (normalizedStatus === 'RESOLVED' || normalizedStatus === 'REOPENED') {
       bg = '#F3E8FF';
       color = '#6B21A8';
-    } else if (status === 'Closed') {
+    } else if (normalizedStatus === 'CLOSED' || normalizedStatus === 'CANCELLED') {
       bg = '#F3F4F6';
       color = '#4B5563';
     }
@@ -151,7 +165,7 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
           display: 'inline-block',
         }}
       >
-        {status}
+        {statusLabels[normalizedStatus] || status}
       </span>
     );
   };
@@ -264,10 +278,14 @@ export const MyTicketsList: React.FC<MyTicketsListProps> = ({
             style={styles.filterSelect}
           >
             <option value="">All Statuses</option>
-            <option value="New">New</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Resolved">Resolved</option>
-            <option value="Closed">Closed</option>
+            <option value="NEW">New</option>
+            <option value="OPEN">Open</option>
+            <option value="IN_PROGRESS">In Progress</option>
+            <option value="WAITING_FOR_REQUESTER">Waiting for Requester</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="CLOSED">Closed</option>
+            <option value="REOPENED">Reopened</option>
+            <option value="CANCELLED">Cancelled</option>
           </select>
 
           {/* Clear Filters Button */}

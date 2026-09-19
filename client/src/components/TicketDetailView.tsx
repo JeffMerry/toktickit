@@ -76,23 +76,37 @@ export const TicketDetailView: React.FC<TicketDetailViewProps> = ({ ticket, onBa
 
   // Helper for Status Badges
   const getStatusBadge = (status: string) => {
+    const normalizedStatus = status.toUpperCase().replace(/\s+/g, '_');
+    const statusLabels: Record<string, string> = {
+      NEW: 'New',
+      OPEN: 'Open',
+      IN_PROGRESS: 'In Progress',
+      WAITING_FOR_REQUESTER: 'Waiting for Requester',
+      RESOLVED: 'Resolved',
+      CLOSED: 'Closed',
+      REOPENED: 'Reopened',
+      CANCELLED: 'Cancelled',
+    };
     let bg = '#EAF6EF';
     let color = '#006B3C';
 
-    if (status === 'In Progress') {
+    if (normalizedStatus === 'OPEN' || normalizedStatus === 'IN_PROGRESS') {
       bg = '#E0F2FE';
       color = '#0369A1';
-    } else if (status === 'Resolved') {
+    } else if (normalizedStatus === 'WAITING_FOR_REQUESTER') {
+      bg = '#FEF3C7';
+      color = '#92400E';
+    } else if (normalizedStatus === 'RESOLVED' || normalizedStatus === 'REOPENED') {
       bg = '#F3E8FF';
       color = '#6B21A8';
-    } else if (status === 'Closed') {
+    } else if (normalizedStatus === 'CLOSED' || normalizedStatus === 'CANCELLED') {
       bg = '#F3F4F6';
       color = '#4B5563';
     }
 
     return (
       <span style={{ backgroundColor: bg, color, padding: '4px 12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 700 }}>
-        {status}
+        {statusLabels[normalizedStatus] || status}
       </span>
     );
   };
