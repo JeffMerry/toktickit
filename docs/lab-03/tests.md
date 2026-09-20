@@ -248,13 +248,31 @@ authentication/requester access, requester Ticket collaboration, IT Staff
 workflow, Administrator user management, and responsive checks at the tested
 viewports.
 
-## 10. Completion Evidence
+## 10. Verification After Merge to `main`
+
+The Lab 3 release was merged by [PR #39](https://github.com/JeffMerry/toktickit/pull/39). On 2026-09-20 (Asia/Bangkok), the commands below ran from `docs/lab3-final-submission`, which was created directly from merged `main` commit `79807cd`. No application code differs from that commit. The intended local database was seeded before the server/client checks and seeded again immediately before Playwright.
+
+| Command | Result | Observed output |
+| :--- | :--- | :--- |
+| `npm --prefix server run db:seed` | Pass | Lab 3 seed completed successfully. |
+| `npm --prefix server run build` | Pass | TypeScript compilation completed successfully. |
+| `npm --prefix server test` | Pass | 14 test files, 48 tests passed. |
+| `npm --prefix client run build` | Pass | TypeScript compilation and Vite production build completed successfully. |
+| `npm --prefix client test` | Pass | 6 test files, 9 tests passed. |
+| `npm --prefix server run db:seed` | Pass | Local E2E fixtures were restored. |
+| `npm run test:e2e` | Pass | 4 Chromium role-journey tests passed in 27.6 seconds. |
+
+The E2E run covers authentication and logout, Requester Ticket creation and Public Comment, IT Staff Queue and Ticket operations, and Administrator User Management. The browser console reported password-change guard and style-property warnings, but no test failed. The output above is the observed summary of the executed commands; full console-output screenshots for the submission PDF have not yet been attached.
+
+The `Planned` entries above remain unimplemented or unverified, especially migration-specific regression and keyboard/focus coverage. Passing the available suites does not change their status.
+
+## 11. Completion Evidence
 
 Before this plan is marked complete:
 
 - [x] Replace implemented and executed test entries with actual outcomes; remaining `Planned` entries identify coverage not yet implemented.
-- [ ] Record actual test file paths if implementation changes them.
-- [ ] Capture complete passing output from final `main`.
+- [x] Record actual test file paths for passing entries; paths for `Planned` entries remain proposed locations.
+- [ ] Attach complete passing console output from final `main` to the submission PDF; the observed results are summarized above.
 - [x] Record the tested commit SHA.
 - [x] Link failed tests to corrective Issues/PRs instead of hiding failures. No failures occurred in the integrated run.
 - [ ] Confirm every AC retains at least one passing automated or justified manual test.
