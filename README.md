@@ -1,6 +1,6 @@
 # TokTickIT - IT Service Desk Application
 
-> **Lab 1 & Lab 2 Submission** — Full-stack IT Service Desk Web Application built with React, Node.js, Express, Prisma ORM, PostgreSQL, and Playwright E2E Testing following the **Zen Green Theme** Design System.
+> **Lab 1, Lab 2 & Lab 3 Submission** — Full-stack IT Service Desk Web Application built with React, Node.js, Express, Prisma ORM, PostgreSQL, and Playwright E2E Testing following the **Zen Green Theme** Design System.
 
 ---
 
@@ -35,36 +35,42 @@ toktickit/
 ├── client/                     # Frontend React Application
 │   ├── src/
 │   │   ├── components/         # Zen Green UI Components (Navbar, MyTicketsList, TicketDetailView, etc.)
-│   │   ├── context/            # RequesterContext (Simulated Login Identity State)
+│   │   ├── context/            # AuthContext (session-based user identity)
 │   │   └── App.tsx             # Main App Router & State Integrations
 │   ├── package.json
 │   └── vite.config.ts
 ├── server/                     # Backend Express Application
 │   ├── prisma/                 # Prisma schema, migrations, & idempotent seed script
-│   │   ├── schema.prisma       # RequesterUser, Category, RelatedSystem, Ticket, Attachment models
-│   │   └── seed.ts             # Active requesters, categories, and systems seed data
-│   ├── src/                    # REST APIs, Multer configs, utils (ticketNumber generator)
+│   │   ├── schema.prisma       # User, Session, Category, RelatedSystem, Ticket, Attachment, PublicComment, InternalNote
+│   │   └── seed.ts             # Local-only users, categories, systems, Tickets, Comments, and Notes
+│   ├── src/                    # REST APIs, authentication, workflow rules, and utilities
 │   ├── tests/                  # Unit tests and API Integration tests
 │   └── package.json
 ├── e2e/                        # End-to-End Test Suites (Playwright)
-│   └── lab-02/                 # Full user workflow & screenshot capture specs
+│   ├── lab-02/                 # Lab 2 workflow and screenshot capture specs
+│   ├── lab-03/                 # Authenticated Requester, IT Staff, and Admin journeys
+│   └── evidence/               # Lab 3 screenshot capture spec
 ├── artifacts/                  # Visual Inspection Deliverables
-│   └── lab-02/screenshots/     # UI Screenshots for Desktop, Mobile, and Modals
+│   ├── lab-02/screenshots/     # Lab 2 UI screenshots
+│   └── lab-03/screenshots/     # Lab 3 desktop, tablet, and mobile screenshots
 ├── docs/
 │   ├── lab-01/                 # Lab 1 Evidence & Documentation
-│   └── lab-02/                 # Lab 2 Sprint Engineering Contracts & Deliverables
-│       ├── specification.md    # Product Requirements & Business Rules (BR-01 to BR-13)
-│       ├── ui-spec.md          # Zen Green Design Tokens & Layout Specs
-│       ├── api-spec.md         # REST API Endpoints Contract
-│       ├── tests.md            # Traceability Matrix & Test Evidence
-│       ├── reviewer.md         # Peer Review & Verification Guide
-│       └── ai-use.md           # AI Collaboration & Prompt Disclosure
+│   ├── lab-02/                 # Lab 2 Sprint Engineering Contracts & Deliverables
+│   │   ├── specification.md    # Product Requirements & Business Rules (BR-01 to BR-13)
+│   │   ├── ui-spec.md          # Zen Green Design Tokens & Layout Specs
+│   │   ├── api-spec.md         # REST API Endpoints Contract
+│   │   ├── tests.md            # Traceability Matrix & Test Evidence
+│   │   ├── reviewer.md         # Peer Review & Verification Guide
+│   │   └── ai-use.md           # AI Collaboration & Prompt Disclosure
+│   └── lab-03/                 # Lab 3 contract, tests, reviewer record, AI use, release evidence
 └── README.md
 ```
 
 ---
 
 ## 🌟 Key Features Delivered in Lab 2
+
+The Development Requester simulation below describes the Lab 2 increment. Lab 3 replaced it with authenticated users while retaining the Requester Ticket and Attachment workflows.
 
 1. **Development Requester Simulation (FR-01, BR-13):**
    - Simulated login interface to switch between active development requesters (`RequesterSelector.tsx`).
@@ -90,12 +96,34 @@ toktickit/
 
 ---
 
+## 🌟 Key Features Delivered in Lab 3
+
+1. **Authentication and role-based access:**
+   - Email/password login, session cookie, logout, and mandatory password change for initial-password accounts.
+   - Requester, IT Staff, and Administrator navigation and backend authorization.
+   - Requester identity comes from the authenticated session; client-supplied `requesterId` cannot select another user's data.
+
+2. **IT Staff Ticket Queue and workflow:**
+   - Search, filters, sorting, pagination, assigned/unassigned ownership, and responsive Queue presentation.
+   - Ticket claim/reassignment, IT Priority, permitted status transitions, Public Comments, and private Internal Notes.
+
+3. **Administrator User Management:**
+   - User list and search, account creation/editing, one-role assignment, activation/deactivation, and new initial passwords.
+   - Backend protection against self-deactivation and removal of the last active Administrator.
+
+4. **Release verification:**
+   - Reviewed feature branches were integrated through `lab3-staging` and released to `main` in [PR #39](https://github.com/JeffMerry/toktickit/pull/39).
+   - On merged `main` commit `79807cd`, server build and 48 tests, client build and 9 tests, and 4 real Chromium E2E journeys passed.
+
+The Requester “problem appears resolved” action, migration-specific regression checks, and keyboard/focus verification remain open in the [Lab 3 test plan](docs/lab-03/tests.md).
+
+---
+
 ## 🛠️ Getting Started
 
 ### **Prerequisites**
-- **Node.js:** v18+ 
-- **npm:** v9+
-- **PostgreSQL Database:** Running local or cloud instance
+- **Node.js and npm:** Versions compatible with this repository's installed dependencies
+- **PostgreSQL Database:** Running local instance
 
 ---
 
@@ -110,30 +138,32 @@ npm install
 
 # Setup environment variables
 cp .env.example .env
-# Ensure DATABASE_URL in .env points to your PostgreSQL instance
+# Ensure DATABASE_URL in .env points to your local PostgreSQL instance
 
 # Run database migrations
 npx prisma migrate dev
 
-# Seed database with initial categories, related systems, and development requesters
+# Seed the intended local development database
 npm run db:seed
 
 # Start backend dev server (runs on http://localhost:5000)
 npm run dev
 ```
 
+The Lab 3 seed contains local-only accounts and temporary passwords. Check the configured database before running it because seeded data is updated and E2E tests create additional local data.
+
 ---
 
 ### 2. Frontend Setup (`client/`)
 
 ```bash
-# Navigate to client directory
+# Navigate to client directory in another terminal
 cd client
 
 # Install dependencies
 npm install
 
-# Start Vite dev server (runs on http://localhost:3000 or http://localhost:3001)
+# Start Vite dev server (runs on http://localhost:5173)
 npm run dev
 ```
 
@@ -143,26 +173,38 @@ npm run dev
 
 ### **1. Run Backend Unit & API Tests (Vitest & Supertest)**
 ```bash
-# Run generator unit tests
-npx vitest run server/tests/unit/
-
-# Run API integration tests (Create Ticket, My Tickets, Attachments Lifecycle)
-npx vitest run server/tests/api/
+npm --prefix server run build
+npm --prefix server test
 ```
 
-### **2. Run Frontend Build Check**
+### **2. Run Frontend Tests & Build Check**
 ```bash
 npm --prefix client run build
+npm --prefix client test
 ```
 
-### **3. Run End-to-End (E2E) Tests (Playwright)**
+### **3. Run Lab 3 End-to-End (E2E) Tests (Playwright)**
 ```bash
-npx playwright test e2e/lab-02/
+# From the repository root; confirm the intended local database first
+npm install
+npm --prefix server run db:seed
+npm run test:e2e
 ```
+
+The Lab 3 E2E suite starts or reuses the local server and client. It changes seeded passwords and creates Ticket/User data. Screenshot evidence can be refreshed after reseeding with `npm run capture:lab3-evidence`.
 
 ---
 
 ## 📚 Documentation & Deliverables
+
+### **Lab 3 Documentation (`docs/lab-03/`)**
+- 📋 **Software Requirements Specification:** [docs/lab-03/specification.md](docs/lab-03/specification.md)
+- 🎨 **Zen Green UI Specification:** [docs/lab-03/ui-spec.md](docs/lab-03/ui-spec.md)
+- 🔌 **REST API Specification:** [docs/lab-03/api-spec.md](docs/lab-03/api-spec.md)
+- ✅ **Test Plan & Traceability Matrix:** [docs/lab-03/tests.md](docs/lab-03/tests.md)
+- 🔍 **Reviewer Record:** [docs/lab-03/reviewer.md](docs/lab-03/reviewer.md)
+- 🤖 **AI Usage Reflection:** [docs/lab-03/ai-use.md](docs/lab-03/ai-use.md)
+- 📸 **Release & Screenshot Evidence:** [docs/lab-03/release-evidence.md](docs/lab-03/release-evidence.md), [artifacts/lab-03/screenshots/](artifacts/lab-03/screenshots/)
 
 ### **Lab 2 Documentation (`docs/lab-02/`)**
 - 📋 **Software Requirements Specification:** [docs/lab-02/specification.md](docs/lab-02/specification.md)

@@ -116,6 +116,19 @@
 
 ---
 
+### PR 8 — `feature/18-lab3-final-documentation` → `lab3-staging`
+
+| Field | Detail |
+|---|---|
+| **Related Issue** | #34 — Release Integration and Evidence |
+| **PR Link** | [PR #38](https://github.com/JeffMerry/toktickit/pull/38) |
+| **Reviewer** | Thanatip Nitinantakul ([@THN4](https://github.com/THN4)) |
+| **Review Comment** | "Everything is complete, great job Kittithat. See you at next lab session." |
+| **My Response** | Thanked the reviewer; no change was requested. |
+| **Outcome** | Approved and merged on 2026-09-19. |
+
+---
+
 ## Pull Requests I Reviewed for My Partner
 
 > I reviewed the following PRs submitted by Thanatip Nitinantakul ([@THN4](https://github.com/THN4)).
@@ -192,13 +205,14 @@
 
 | Field | Detail |
 |---|---|
-| **PR Link** | Pending — create after final documentation review. |
-| **Final Commit SHA** | Pending — record the tested `main` candidate SHA. |
-| **Reviewer** | Pending |
-| **Review Comment(s)** | Pending |
-| **My Response(s)** | Pending |
-| **Test Evidence** | Re-run the documented build, server/client test, real E2E, and evidence commands from the final release candidate. |
-| **Outcome** | Pending review |
+| **PR Link** | [PR #39](https://github.com/JeffMerry/toktickit/pull/39) |
+| **Reviewed source commit** | `f2c9976` (`lab3-staging`) |
+| **Merged `main` commit** | `79807cd` |
+| **Reviewer** | Thanatip Nitinantakul ([@THN4](https://github.com/THN4)) |
+| **Review Comment** | "Everything is done, great job Kittithat." |
+| **My Response** | Posted the final build, server/client test, and E2E results for `f2c9976`, thanked the reviewer, and confirmed readiness to merge. |
+| **Test Evidence** | Release-source verification: server build and 14 files/48 tests; client build and 6 files/9 tests; 4 Chromium E2E journeys. Repeated on merged `main` commit `79807cd` on 2026-09-20 with the same passing counts; see [tests.md](tests.md) and [release-evidence.md](release-evidence.md). |
+| **Outcome** | Approved and merged on 2026-09-19. |
 
 ## Final Review Evidence Checklist
 
@@ -207,4 +221,4 @@
 - [x] Meaningful review comments and responses are recorded.
 - [x] Resulting changes and merge outcomes are recorded.
 - [x] Partner PR reviews are recorded.
-- [ ] Final `lab3-staging` → `main` PR, tested SHA, and final review outcome are recorded.
+- [x] Final `lab3-staging` → `main` PR, tested SHA, and final review outcome are recorded.
