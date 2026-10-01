@@ -922,7 +922,7 @@ app.patch('/api/staff/actions-taken/:id', requireTrustedOrigin, requireAuthentic
     const nextDescription = description.value === undefined ? current.description : description.value;
     const nextResult = result.value === undefined ? current.result : result.value;
     const nextAttachmentNotes = attachmentNotes.value === undefined ? current.attachmentNotes : attachmentNotes.value;
-    const providedFollowUpNote = actionText(req.body?.followUpNote, 'Follow-up note', true, 2000);
+    const providedFollowUpNote = actionText(req.body?.followUpNote, 'Follow-up note', followUpRequired === true, 2000);
     const nextFollowUpNote = followUpRequired ? (providedFollowUpNote.value === undefined ? current.followUpNote : providedFollowUpNote.value) : null;
 
     if (!actionOccurredAt) return res.status(400).json({ error: 'actionOccurredAt must be a valid timestamp.' });

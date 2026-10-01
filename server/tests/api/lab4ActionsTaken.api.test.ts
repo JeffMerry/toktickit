@@ -84,10 +84,16 @@ describe('Lab 4 Actions Taken API', () => {
 
   it('transitions an Action Taken safely and rejects stale edits', async () => {
     const initial = await prisma.actionTaken.findUniqueOrThrow({ where: { id: actionId }, select: { updatedAt: true } });
+    const edited = await request(app)
+      .patch(`/api/staff/actions-taken/${actionId}`)
+      .set('Cookie', staffCookie)
+      .send({ description: 'Inspect and document the VPN connection logs.', followUpRequired: false, followUpNote: '', expectedUpdatedAt: initial.updatedAt.toISOString() })
+      .expect(200);
+    expect(edited.body).toMatchObject({ followUpRequired: false, followUpNote: null, description: 'Inspect and document the VPN connection logs.' });
     const started = await request(app)
       .patch(`/api/staff/actions-taken/${actionId}/status`)
       .set('Cookie', staffCookie)
-      .send({ status: 'IN_PROGRESS', expectedUpdatedAt: initial.updatedAt.toISOString() })
+      .send({ status: 'IN_PROGRESS', expectedUpdatedAt: edited.body.updatedAt })
       .expect(200);
     await request(app)
       .patch(`/api/staff/actions-taken/${actionId}`)
