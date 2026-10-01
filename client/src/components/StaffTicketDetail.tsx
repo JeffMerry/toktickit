@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { apiFetch } from '../lib/api';
+import { ActionsTaken } from './ActionsTaken';
 
 type DetailTicket = {
   id: number;
@@ -107,6 +108,7 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
           <form onSubmit={handleStatus} style={styles.statusForm}><label style={styles.label}>Next status<select value={status} onChange={(event) => setStatus(event.target.value)} disabled={isUpdating} style={styles.select}><option value="">Select a transition</option>{ticket.allowedNextStatuses.map((value) => <option key={value}>{value}</option>)}</select></label><label style={styles.confirm}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> I confirm this status change when required.</label><button type="submit" disabled={!status || isUpdating} style={styles.button}>Update status</button></form>
         </section>
       </div>
+      <ActionsTaken ticketId={ticketId} canManage />
       <div style={styles.grid}>
         <section style={styles.card}><h2 style={styles.heading}>Attachments</h2>{ticket.attachments.length ? ticket.attachments.map((attachment) => <p key={attachment.id}>{attachment.fileName}{attachment.isRemoved ? ` (removed: ${attachment.removalReason || 'no reason'})` : ''}</p>) : <p>No attachments.</p>}</section>
         <section style={styles.card}>

@@ -11,6 +11,7 @@ import { StaffTicketQueue } from './components/StaffTicketQueue';
 import { StaffTicketDetail } from './components/StaffTicketDetail';
 import { PublicCommentSection } from './components/PublicCommentSection';
 import { UserManagement } from './components/UserManagement';
+import { ActionsTaken } from './components/ActionsTaken';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
@@ -400,6 +401,7 @@ function MainApp() {
                 onBack={() => setCurrentView('my-tickets')}
               >
                 <>
+                  <ActionsTaken ticketId={ticketDetail.id} />
                   <AttachmentSection
                     ticketId={ticketDetail.id}
                     attachments={ticketDetail.attachments || []}
