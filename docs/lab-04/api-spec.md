@@ -28,8 +28,11 @@ Requester may read only an owned Ticket. IT Staff and Administrator may read an 
       "ticketId": 12,
       "actionOccurredAt": "2026-09-29T03:30:00.000Z",
       "description": "Replaced the faulty network cable.",
-      "result": "Connection is stable after verification.",
-      "performedBy": { "id": 6, "name": "Mary Support", "role": "IT_STAFF" },
+      "result": null,
+      "status": "PLANNED",
+      "assignee": { "id": 6, "name": "Mary Support", "role": "IT_STAFF" },
+      "createdBy": { "id": 6, "name": "Mary Support", "role": "IT_STAFF" },
+      "performedBy": null,
       "followUpRequired": true,
       "followUpNote": "Confirm connection quality tomorrow.",
       "attachmentNotes": "See cable-test-photo.jpg in the Ticket attachments.",
@@ -53,14 +56,14 @@ IT Staff and Administrator only. Request body:
 {
   "actionOccurredAt": "2026-09-29T03:30:00.000Z",
   "description": "Replaced the faulty network cable.",
-  "result": "Connection is stable after verification.",
+  "assigneeId": 6,
   "followUpRequired": true,
   "followUpNote": "Confirm connection quality tomorrow.",
   "attachmentNotes": "See cable-test-photo.jpg in the Ticket attachments."
 }
 ```
 
-Returns `201 Created` with the saved Action Taken. `performedBy` comes from the session. Returns `422` for invalid date, missing Description/Result, or missing Follow-up Note when required.
+Returns `201 Created` with a `PLANNED` Action Taken. `createdBy` comes from the session; `performedBy` is set only when the Action is completed. Returns `422` for invalid date, missing Description, an inactive/ineligible assignee, or missing Follow-up Note when required.
 
 ### 2.3 Update Action Taken
 
@@ -69,13 +72,30 @@ PATCH /api/staff/actions-taken/:actionId
 Content-Type: application/json
 ```
 
-IT Staff and Administrator only. Body has the same editable fields as create plus:
+IT Staff and Administrator only. Body has the same editable fields as create, may include `result`, and includes:
 
 ```json
 { "expectedUpdatedAt": "2026-09-29T03:31:00.000Z" }
 ```
 
-Returns `200 OK` with the edited Action Taken. The original performer and `createdAt` never change. Returns `409` for stale `expectedUpdatedAt`; the client reloads current data before retrying.
+Returns `200 OK` with the edited Action Taken. The original creator, performer, and `createdAt` never change. Completed and cancelled Actions cannot be reassigned. Returns `409` for stale `expectedUpdatedAt`; the client reloads current data before retrying.
+
+### 2.4 Transition Action Taken lifecycle
+
+```http
+PATCH /api/staff/actions-taken/:actionId/status
+Content-Type: application/json
+```
+
+```json
+{
+  "status": "COMPLETED",
+  "result": "Connection is stable after verification.",
+  "expectedUpdatedAt": "2026-09-29T03:31:00.000Z"
+}
+```
+
+IT Staff and Administrator only. The backend permits `PLANNED → IN_PROGRESS | COMPLETED | CANCELLED` and `IN_PROGRESS → COMPLETED | CANCELLED`. Completion requires Result and stores the session user as `performedBy` with a server completion timestamp. Terminal Actions cannot transition again; stale updates return `409`.
 
 ## 3. Ticket workflow additions
 
