@@ -32,13 +32,13 @@ The final E2E command is run after an explicit seed because browser flows change
 
 | Test ID | Type | Requirement / AC | Scenario | Expected result | Planned test file | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| UNIT-01 | Unit | BR-04 to BR-06 | Validate Action Taken date, text limits, and conditional follow-up note | Invalid input has deterministic validation errors | `server/tests/unit/lab4ActionsTaken.test.ts` | Planned |
+| UNIT-01 | Unit | BR-04 to BR-08 | Validate Action Taken date, text limits, conditional follow-up note, assignment, and lifecycle transitions | Invalid input has deterministic validation errors | `server/tests/unit/lab4ActionsTaken.test.ts` | Planned |
 | UNIT-02 | Unit | BR-09 to BR-13 | Evaluate final status transition and resolution gate | Only approved transitions and qualified resolutions are allowed | `server/tests/unit/lab4Workflow.test.ts` | Planned |
 | UNIT-03 | Unit | BR-17 to BR-19 | Calculate dashboard status, open, urgent, and ordering rules | Counts and ordering match documented rules | `server/tests/unit/lab4DashboardMetrics.test.ts` | Planned |
-| API-ACT-01 | API | FR-01 to FR-04, AC-01 | Operational user creates valid Action Taken | `201`; correct Ticket relation and session-derived performer | `server/tests/api/lab4ActionsTaken.api.test.ts` | Planned |
+| API-ACT-01 | API | FR-01 to FR-04, AC-01 | Operational user creates, assigns, starts, completes, and cancels Actions Taken | Correct Ticket relation, session-derived creator/performer, and lifecycle state | `server/tests/api/lab4ActionsTaken.api.test.ts` | Planned |
 | API-ACT-02 | API | BR-05, BR-06, AC-02 | Missing Result or required Follow-up Note | `422`; no Action Taken saved | `server/tests/api/lab4ActionsTaken.api.test.ts` | Planned |
 | API-ACT-03 | API | FR-05, BR-08, AC-03 | Requester reads own/non-owned Action Taken and attempts writes | Own read allowed; non-owned read and all writes denied | `server/tests/api/lab4ActionsTaken.api.test.ts` | Planned |
-| API-ACT-04 | API | BR-03, BR-07, AC-04 | Client supplies performer or stale update timestamp | Performer ignored/rejected; stale edit returns `409` | `server/tests/api/lab4ActionsTaken.api.test.ts` | Planned |
+| API-ACT-04 | API | BR-03, BR-07 to BR-09, AC-04 | Client supplies performer, inactive assignee, invalid lifecycle edge, or stale update timestamp | Actor is ignored/rejected; invalid assignment/edge fails; stale edit returns `409` | `server/tests/api/lab4ActionsTaken.api.test.ts` | Planned |
 | API-WF-01 | API | FR-06, AC-05 | Attempt each valid and invalid status transition | Backend matrix is enforced | `server/tests/api/lab4TicketWorkflow.api.test.ts` | Planned |
 | API-WF-02 | API | FR-07, BR-11 to BR-13, AC-05 | Resolve without owner, confirmation, or qualifying Action Taken | `422`; Ticket status is unchanged | `server/tests/api/lab4TicketWorkflow.api.test.ts` | Planned |
 | API-WF-03 | API | FR-08, AC-06 | Requester posts resolution indication repeatedly | Timestamp is recorded idempotently; formal status is unchanged | `server/tests/api/lab4TicketWorkflow.api.test.ts` | Planned |

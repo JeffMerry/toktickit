@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
-import type { Prisma, Priority, TicketStatus, UserRole } from '@prisma/client';
+import type { ActionStatus, Prisma, Priority, TicketStatus, UserRole } from '@prisma/client';
 import { generateTicketNumber } from './utils/ticketNumber';
 import {
   createSessionToken,
@@ -711,6 +711,46 @@ async function staleTicketResponse(res: Response, ticketId: number) {
   return res.status(409).json({ error: 'Ticket has changed. Refresh and try again.' });
 }
 
+const actionUserSelect = { id: true, name: true, role: true } as const;
+const actionInclude = {
+  assignee: { select: actionUserSelect },
+  createdBy: { select: actionUserSelect },
+  performedBy: { select: actionUserSelect },
+} as const;
+const actionStatuses: ActionStatus[] = ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+
+function parseActionStatus(value: unknown): ActionStatus | undefined {
+  if (typeof value !== 'string') return undefined;
+  const status = value.trim().toUpperCase() as ActionStatus;
+  return actionStatuses.includes(status) ? status : undefined;
+}
+
+function parseActionDate(value: unknown): Date | undefined {
+  if (typeof value !== 'string') return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function actionText(value: unknown, field: string, required: boolean, maxLength: number): { value?: string | null; error?: string } {
+  if (value === undefined) return { value: undefined };
+  if (typeof value !== 'string') return { error: `${field} must be text.` };
+  const trimmed = value.trim();
+  if (!trimmed) return required ? { error: `${field} is required.` } : { value: null };
+  if (trimmed.length > maxLength) return { error: `${field} must not exceed ${maxLength.toLocaleString()} characters.` };
+  return { value: trimmed };
+}
+
+async function isEligibleActionAssignee(userId: number): Promise<boolean> {
+  return Boolean(await prisma.user.findFirst({
+    where: { id: userId, isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } },
+    select: { id: true },
+  }));
+}
+
+async function canAccessActions(req: AuthenticatedRequest, ticketId: number): Promise<boolean> {
+  return canAccessTicketDiscussion(req, ticketId);
+}
+
 // PATCH /api/staff/tickets/:id/owner — assign, reassign, or unassign an eligible owner
 app.patch('/api/staff/tickets/:id/owner', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
   const ticketId = Number(req.params.id);
@@ -791,6 +831,163 @@ app.patch('/api/staff/tickets/:id/status', requireTrustedOrigin, requireAuthenti
 });
 
 // GET /api/tickets/:id/public-comments — requester owner and operational users only
+// GET /api/tickets/:id/actions-taken — requester-owned or operational read access
+app.get('/api/tickets/:id/actions-taken', requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (req.auth!.user.mustChangePassword) return res.status(403).json({ error: 'Password change is required before accessing this resource.' });
+    if (!(await canAccessActions(req, ticketId))) return res.status(404).json({ error: 'Ticket not found.' });
+    const actions = await prisma.actionTaken.findMany({ where: { ticketId }, orderBy: [{ actionOccurredAt: 'desc' }, { id: 'desc' }], include: actionInclude });
+    return res.json(actions);
+  } catch (error) {
+    console.error('Error fetching actions taken:', error);
+    return res.status(500).json({ error: 'Failed to fetch actions taken.' });
+  }
+});
+
+// GET /api/staff/action-assignees — active operational users available for Actions Taken
+app.get('/api/staff/action-assignees', requireAuthentication, requireOperationalUser, async (_req: AuthenticatedRequest, res) => {
+  try {
+    const assignees = await prisma.user.findMany({
+      where: { isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    return res.json(assignees);
+  } catch (error) {
+    console.error('Error fetching action assignees:', error);
+    return res.status(500).json({ error: 'Failed to fetch action assignees.' });
+  }
+});
+
+// POST /api/staff/tickets/:id/actions-taken — create a planned Action Taken
+app.post('/api/staff/tickets/:id/actions-taken', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  const actionOccurredAt = parseActionDate(req.body?.actionOccurredAt);
+  const description = actionText(req.body?.description, 'Description', true, 2000);
+  const result = actionText(req.body?.result, 'Result', false, 2000);
+  const attachmentNotes = actionText(req.body?.attachmentNotes, 'Attachment notes', false, 1000);
+  const followUpRequired = req.body?.followUpRequired;
+  const followUpNote = actionText(req.body?.followUpNote, 'Follow-up note', true, 2000);
+  const assigneeId = req.body?.assigneeId ?? null;
+
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (!actionOccurredAt) return res.status(400).json({ error: 'actionOccurredAt must be a valid timestamp.' });
+  if (description.error || result.error || attachmentNotes.error) return res.status(400).json({ error: description.error || result.error || attachmentNotes.error });
+  if (typeof followUpRequired !== 'boolean') return res.status(400).json({ error: 'followUpRequired must be a boolean.' });
+  if (followUpRequired && (followUpNote.error || !followUpNote.value)) {
+    return res.status(400).json({ error: followUpNote.error || 'Follow-up note is required.' });
+  }
+  if (assigneeId !== null && (!Number.isInteger(assigneeId) || assigneeId <= 0)) return res.status(400).json({ error: 'assigneeId must be a positive integer or null.' });
+  if (assigneeId !== null && !(await isEligibleActionAssignee(assigneeId))) return res.status(422).json({ error: 'assigneeId must reference an active operational user.' });
+
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    const action = await prisma.$transaction(async (tx) => {
+      const created = await tx.actionTaken.create({
+        data: { ticketId, assigneeId, createdById: req.auth!.user.id, actionOccurredAt, description: description.value!, result: result.value ?? null, followUpRequired, followUpNote: followUpRequired ? followUpNote.value! : null, attachmentNotes: attachmentNotes.value ?? null },
+        include: actionInclude,
+      });
+      await tx.actionTakenEvent.create({ data: { actionTakenId: created.id, actorId: req.auth!.user.id, eventType: 'CREATED' } });
+      return created;
+    });
+    return res.status(201).json(action);
+  } catch (error) {
+    console.error('Error creating action taken:', error);
+    return res.status(500).json({ error: 'Failed to create action taken.' });
+  }
+});
+
+// PATCH /api/staff/actions-taken/:id — edit an Action Taken without replacing attribution
+app.patch('/api/staff/actions-taken/:id', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const actionId = Number(req.params.id);
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  if (!Number.isInteger(actionId) || actionId <= 0) return res.status(400).json({ error: 'Valid action ID is required.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  try {
+    const current = await prisma.actionTaken.findUnique({ where: { id: actionId } });
+    if (!current) return res.status(404).json({ error: 'Action Taken not found.' });
+    if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return res.status(409).json({ error: 'Action Taken has changed. Refresh and try again.' });
+
+    const description = actionText(req.body?.description, 'Description', true, 2000);
+    const result = actionText(req.body?.result, 'Result', false, 2000);
+    const attachmentNotes = actionText(req.body?.attachmentNotes, 'Attachment notes', false, 1000);
+    const actionOccurredAt = req.body?.actionOccurredAt === undefined ? current.actionOccurredAt : parseActionDate(req.body.actionOccurredAt);
+    const followUpRequired = req.body?.followUpRequired === undefined ? current.followUpRequired : req.body.followUpRequired;
+    const assigneeId = req.body?.assigneeId === undefined ? current.assigneeId : req.body.assigneeId;
+    const nextDescription = description.value === undefined ? current.description : description.value;
+    const nextResult = result.value === undefined ? current.result : result.value;
+    const nextAttachmentNotes = attachmentNotes.value === undefined ? current.attachmentNotes : attachmentNotes.value;
+    const providedFollowUpNote = actionText(req.body?.followUpNote, 'Follow-up note', followUpRequired === true, 2000);
+    const nextFollowUpNote = followUpRequired ? (providedFollowUpNote.value === undefined ? current.followUpNote : providedFollowUpNote.value) : null;
+
+    if (!actionOccurredAt) return res.status(400).json({ error: 'actionOccurredAt must be a valid timestamp.' });
+    if (description.error || result.error || attachmentNotes.error || providedFollowUpNote.error) return res.status(400).json({ error: description.error || result.error || attachmentNotes.error || providedFollowUpNote.error });
+    if (typeof followUpRequired !== 'boolean') return res.status(400).json({ error: 'followUpRequired must be a boolean.' });
+    if (followUpRequired && !nextFollowUpNote) return res.status(400).json({ error: 'Follow-up note is required.' });
+    if (assigneeId !== null && (!Number.isInteger(assigneeId) || assigneeId <= 0)) return res.status(400).json({ error: 'assigneeId must be a positive integer or null.' });
+    if (assigneeId !== null && !(await isEligibleActionAssignee(assigneeId))) return res.status(422).json({ error: 'assigneeId must reference an active operational user.' });
+    if ((current.status === 'COMPLETED' || current.status === 'CANCELLED') && assigneeId !== current.assigneeId) return res.status(422).json({ error: 'Terminal Actions Taken cannot be reassigned.' });
+
+    const action = await prisma.$transaction(async (tx) => {
+      const updated = await tx.actionTaken.updateMany({
+        where: { id: actionId, updatedAt: expectedUpdatedAt },
+        data: { actionOccurredAt, description: nextDescription!, result: nextResult, assigneeId, followUpRequired, followUpNote: nextFollowUpNote, attachmentNotes: nextAttachmentNotes },
+      });
+      if (updated.count !== 1) return undefined;
+      await tx.actionTakenEvent.create({ data: { actionTakenId: actionId, actorId: req.auth!.user.id, eventType: 'UPDATED' } });
+      return tx.actionTaken.findUnique({ where: { id: actionId }, include: actionInclude });
+    });
+    if (!action) return res.status(409).json({ error: 'Action Taken has changed. Refresh and try again.' });
+    return res.json(action);
+  } catch (error) {
+    console.error('Error updating action taken:', error);
+    return res.status(500).json({ error: 'Failed to update action taken.' });
+  }
+});
+
+// PATCH /api/staff/actions-taken/:id/status — start, complete, or cancel an Action Taken
+app.patch('/api/staff/actions-taken/:id/status', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  const actionId = Number(req.params.id);
+  const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
+  const status = parseActionStatus(req.body?.status);
+  if (!Number.isInteger(actionId) || actionId <= 0) return res.status(400).json({ error: 'Valid action ID is required.' });
+  if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
+  if (!status) return res.status(400).json({ error: 'Action status is invalid.' });
+  try {
+    const current = await prisma.actionTaken.findUnique({ where: { id: actionId } });
+    if (!current) return res.status(404).json({ error: 'Action Taken not found.' });
+    if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return res.status(409).json({ error: 'Action Taken has changed. Refresh and try again.' });
+    const allowed: Record<ActionStatus, ActionStatus[]> = { PLANNED: ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'], IN_PROGRESS: ['COMPLETED', 'CANCELLED'], COMPLETED: [], CANCELLED: [] };
+    if (!allowed[current.status].includes(status)) return res.status(422).json({ error: 'This Action Taken transition is not allowed.' });
+    const result = actionText(req.body?.result, 'Result', false, 2000);
+    const actionOccurredAt = req.body?.actionOccurredAt === undefined ? current.actionOccurredAt : parseActionDate(req.body.actionOccurredAt);
+    const nextResult = result.value === undefined ? current.result : result.value;
+    if (result.error) return res.status(400).json({ error: result.error });
+    if (!actionOccurredAt) return res.status(400).json({ error: 'actionOccurredAt must be a valid timestamp.' });
+    if (status === 'COMPLETED' && (!nextResult || actionOccurredAt.getTime() > Date.now() + 5 * 60 * 1000)) return res.status(422).json({ error: 'Completion requires a Result and an Action Date/Time no more than five minutes in the future.' });
+
+    const action = await prisma.$transaction(async (tx) => {
+      const updated = await tx.actionTaken.updateMany({
+        where: { id: actionId, updatedAt: expectedUpdatedAt },
+        data: { status, result: nextResult, actionOccurredAt, performedById: status === 'COMPLETED' ? req.auth!.user.id : current.performedById },
+      });
+      if (updated.count !== 1) return undefined;
+      await tx.actionTakenEvent.create({ data: { actionTakenId: actionId, actorId: req.auth!.user.id, eventType: 'STATUS_CHANGED' } });
+      return tx.actionTaken.findUnique({ where: { id: actionId }, include: actionInclude });
+    });
+    if (!action) return res.status(409).json({ error: 'Action Taken has changed. Refresh and try again.' });
+    return res.json(action);
+  } catch (error) {
+    console.error('Error transitioning action taken:', error);
+    return res.status(500).json({ error: 'Failed to transition action taken.' });
+  }
+});
+
 app.get('/api/tickets/:id/public-comments', requireAuthentication, async (req: AuthenticatedRequest, res) => {
   const ticketId = Number(req.params.id);
   if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });

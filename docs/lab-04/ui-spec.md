@@ -65,6 +65,7 @@ Ticket Detail has an `Actions Taken` section below the Ticket summary and workfl
 
 - Action date/time in browser locale with an accessible UTC value available to assistive technology.
 - Description and Result as plain text.
+- Lifecycle status and assignee, with text labels for `PLANNED`, `IN_PROGRESS`, `COMPLETED`, and `CANCELLED`.
 - `Performed by` name and role badge.
 - A clear `Follow-up required` or `No follow-up required` text indicator.
 - Follow-up Note only when present.
@@ -81,14 +82,15 @@ IT Staff and Administrator see an `Add Action Taken` button. It opens an accessi
 | :--- | :--- |
 | Action date/time | Required, defaults to current local time, validates the server rule |
 | Action description | Required textarea with inline validation |
-| Result | Required textarea with inline validation |
-| Performed by | Read-only current-user display; no editable user selector |
+| Result | Optional until completion; required when completing |
+| Assignee | Optional active operational-user selector; rejects inactive or Requester accounts |
+| Performed by | Read-only backend value set when the Action is completed |
 | Follow-up required | Checkbox or switch |
 | Follow-up note | Hidden or disabled until required; required when enabled |
 | Attachment notes | Optional textarea describing the relevant attachment/file |
 | Save / Cancel | Save disables repeated submit while pending; Cancel closes without mutation |
 
-An operational user sees `Edit Action` for each accessible Action Taken. The original performer remains read-only. A stale update shows a conflict message and offers `Reload latest action` without silently overwriting entered values. There is no delete control in Lab 4.
+An operational user sees `Edit Action` plus permitted lifecycle controls for each accessible Action Taken: `Start`, `Complete`, or `Cancel`. The original creator and performer remain read-only. A stale update shows a conflict message and offers `Reload latest action` without silently overwriting entered values. There is no delete control in Lab 4.
 
 ### 4.3 Requester mode
 
