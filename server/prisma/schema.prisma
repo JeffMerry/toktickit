@@ -33,28 +33,45 @@ enum TicketStatus {
   CANCELLED
 }
 
+enum ActionStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ActionEventType {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+}
+
 // Replaces Lab 2 RequesterUser. The migration renames the table in place,
 // preserving requester IDs and existing Ticket ownership.
 model User {
-  id                 Int       @id @default(autoincrement())
+  id                 Int      @id @default(autoincrement())
   name               String
-  email              String    @unique
-  normalizedEmail    String    @unique
+  email              String   @unique
+  normalizedEmail    String   @unique
   passwordHash       String
-  role               UserRole  @default(REQUESTER)
-  isActive           Boolean   @default(true)
-  mustChangePassword Boolean   @default(true)
+  role               UserRole @default(REQUESTER)
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(true)
   // Retained while the Lab 2 requester selector remains available.
   department         String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  requesterTickets           Ticket[]          @relation("TicketRequester")
-  ownedTickets               Ticket[]          @relation("TicketOwner")
-  resolutionSuggestedTickets Ticket[]          @relation("ResolutionSuggestedBy")
+  requesterTickets           Ticket[]           @relation("TicketRequester")
+  ownedTickets               Ticket[]           @relation("TicketOwner")
+  resolutionSuggestedTickets Ticket[]           @relation("ResolutionSuggestedBy")
   sessions                   Session[]
   publicComments             PublicComment[]
   internalNotes              InternalNote[]
+  assignedActions            ActionTaken[]      @relation("ActionAssignee")
+  createdActions             ActionTaken[]      @relation("ActionCreator")
+  performedActions           ActionTaken[]      @relation("ActionPerformer")
+  actionEvents               ActionTakenEvent[]
 
   @@index([role, isActive])
 }
@@ -113,18 +130,59 @@ model Ticket {
   createdAt               DateTime     @default(now())
   updatedAt               DateTime     @updatedAt
 
-  requester             User          @relation("TicketRequester", fields: [requesterId], references: [id])
-  owner                 User?         @relation("TicketOwner", fields: [ownerId], references: [id])
-  resolutionSuggestedBy User?         @relation("ResolutionSuggestedBy", fields: [resolutionSuggestedById], references: [id])
-  category              Category      @relation(fields: [categoryId], references: [id])
-  relatedSystem         RelatedSystem @relation(fields: [relatedSystemId], references: [id])
+  requester             User            @relation("TicketRequester", fields: [requesterId], references: [id])
+  owner                 User?           @relation("TicketOwner", fields: [ownerId], references: [id])
+  resolutionSuggestedBy User?           @relation("ResolutionSuggestedBy", fields: [resolutionSuggestedById], references: [id])
+  category              Category        @relation(fields: [categoryId], references: [id])
+  relatedSystem         RelatedSystem   @relation(fields: [relatedSystemId], references: [id])
   attachments           Attachment[]
   publicComments        PublicComment[]
   internalNotes         InternalNote[]
+  actionsTaken          ActionTaken[]
 
   @@index([requesterId, createdAt])
   @@index([ownerId, currentStatus])
   @@index([currentStatus, itPriority])
+}
+
+model ActionTaken {
+  id               Int          @id @default(autoincrement())
+  ticketId         Int
+  assigneeId       Int?
+  createdById      Int
+  performedById    Int?
+  actionOccurredAt DateTime
+  description      String
+  result           String?
+  status           ActionStatus @default(PLANNED)
+  followUpRequired Boolean      @default(false)
+  followUpNote     String?
+  attachmentNotes  String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  ticket      Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  assignee    User?              @relation("ActionAssignee", fields: [assigneeId], references: [id])
+  createdBy   User               @relation("ActionCreator", fields: [createdById], references: [id])
+  performedBy User?              @relation("ActionPerformer", fields: [performedById], references: [id])
+  events      ActionTakenEvent[]
+
+  @@index([ticketId, actionOccurredAt])
+  @@index([assigneeId, status])
+  @@index([performedById, actionOccurredAt])
+}
+
+model ActionTakenEvent {
+  id            Int             @id @default(autoincrement())
+  actionTakenId Int
+  actorId       Int
+  eventType     ActionEventType
+  createdAt     DateTime        @default(now())
+
+  actionTaken ActionTaken @relation(fields: [actionTakenId], references: [id], onDelete: Cascade)
+  actor       User        @relation(fields: [actorId], references: [id])
+
+  @@index([actionTakenId, createdAt])
 }
 
 model PublicComment {
