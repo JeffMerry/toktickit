@@ -1,4 +1,6 @@
 import {
+  ActionEventType,
+  ActionStatus,
   PrismaClient,
   Priority,
   TicketStatus,
@@ -9,7 +11,7 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Starting Lab 3 seeding...');
+  console.log('Starting Lab 4 seeding...');
   // Development-only password: ChangeMe123! (users must change it on first login)
   const defaultPasswordHash = await bcrypt.hash('ChangeMe123!', 12);
 
@@ -165,7 +167,125 @@ async function main() {
     ],
   });
 
-  console.log('Lab 3 seed completed successfully.');
+  // Recreate only the Lab 4 demonstration actions attached to stable seed
+  // Tickets. This keeps repeated local seeds free of duplicate fixtures while
+  // retaining TKT-2026-SEED-001 as the required zero-action example.
+  await prisma.actionTaken.deleteMany({ where: { ticketId: { in: seededTicketIds } } });
+
+  const actions = [
+    {
+      ticketNumber: 'TKT-2026-SEED-002',
+      assigneeEmail: 'mary.support@kmutt.ac.th',
+      createdByEmail: 'somchai.technician@kmutt.ac.th',
+      actionOccurredAt: new Date('2026-09-03T03:00:00.000Z'),
+      description: 'Review VPN disconnect diagnostics and collect connection logs.',
+      status: ActionStatus.PLANNED,
+      followUpRequired: false,
+    },
+    {
+      ticketNumber: 'TKT-2026-SEED-003',
+      assigneeEmail: 'niran.engineer@kmutt.ac.th',
+      createdByEmail: 'niran.engineer@kmutt.ac.th',
+      performedByEmail: 'niran.engineer@kmutt.ac.th',
+      actionOccurredAt: new Date('2026-09-01T04:00:00.000Z'),
+      description: 'Reproduce the Grade Submission App save failure in the test environment.',
+      result: 'The save request failed after a database validation error was returned.',
+      status: ActionStatus.COMPLETED,
+      followUpRequired: false,
+      attachmentNotes: 'See application-error-log.txt in the Ticket attachments when available.',
+    },
+    {
+      ticketNumber: 'TKT-2026-SEED-003',
+      assigneeEmail: 'mary.support@kmutt.ac.th',
+      createdByEmail: 'niran.engineer@kmutt.ac.th',
+      actionOccurredAt: new Date('2026-09-02T06:30:00.000Z'),
+      description: 'Verify the database validation fix with a new grade submission.',
+      status: ActionStatus.IN_PROGRESS,
+      followUpRequired: true,
+      followUpNote: 'Confirm successful submission with Academic Affairs after deployment.',
+    },
+    {
+      ticketNumber: 'TKT-2026-SEED-004',
+      assigneeEmail: 'somchai.technician@kmutt.ac.th',
+      createdByEmail: 'somchai.technician@kmutt.ac.th',
+      actionOccurredAt: new Date('2026-09-02T09:30:00.000Z'),
+      description: 'Prepare the mailbox unlock verification steps for the requester.',
+      status: ActionStatus.PLANNED,
+      followUpRequired: true,
+      followUpNote: 'Wait for the requester to confirm their most recent successful sign-in.',
+    },
+    {
+      ticketNumber: 'TKT-2026-SEED-005',
+      assigneeEmail: 'mary.support@kmutt.ac.th',
+      createdByEmail: 'mary.support@kmutt.ac.th',
+      performedByEmail: 'mary.support@kmutt.ac.th',
+      actionOccurredAt: new Date('2026-09-01T08:00:00.000Z'),
+      description: 'Replace the printer toner cartridge and print a test page.',
+      result: 'The replacement cartridge produced a clear test page and normal print output.',
+      status: ActionStatus.COMPLETED,
+      followUpRequired: false,
+      attachmentNotes: 'Look for the printed test-page photo in the Ticket attachments.',
+    },
+    {
+      ticketNumber: 'TKT-2026-SEED-006',
+      assigneeEmail: 'niran.engineer@kmutt.ac.th',
+      createdByEmail: 'niran.engineer@kmutt.ac.th',
+      performedByEmail: 'niran.engineer@kmutt.ac.th',
+      actionOccurredAt: new Date('2026-09-01T10:00:00.000Z'),
+      description: 'Measure wireless signal strength in the second-floor meeting room.',
+      result: 'Access point placement was adjusted and signal strength now meets the local target.',
+      status: ActionStatus.COMPLETED,
+      followUpRequired: false,
+    },
+    {
+      ticketNumber: 'TKT-2026-SEED-007',
+      assigneeEmail: 'mary.support@kmutt.ac.th',
+      createdByEmail: 'mary.support@kmutt.ac.th',
+      actionOccurredAt: new Date('2026-09-04T02:00:00.000Z'),
+      description: 'Schedule a diagnostic review for the recurring learning application error.',
+      status: ActionStatus.CANCELLED,
+      followUpRequired: false,
+    },
+  ];
+
+  for (const action of actions) {
+    const savedAction = await prisma.actionTaken.create({
+      data: {
+        ticketId: ticketIdByNumber.get(action.ticketNumber)!,
+        assigneeId: getUserId(action.assigneeEmail),
+        createdById: getUserId(action.createdByEmail),
+        performedById: action.performedByEmail ? getUserId(action.performedByEmail) : null,
+        actionOccurredAt: action.actionOccurredAt,
+        description: action.description,
+        result: action.result ?? null,
+        status: action.status,
+        followUpRequired: action.followUpRequired,
+        followUpNote: action.followUpNote ?? null,
+        attachmentNotes: action.attachmentNotes ?? null,
+      },
+      select: { id: true },
+    });
+
+    await prisma.actionTakenEvent.create({
+      data: {
+        actionTakenId: savedAction.id,
+        actorId: getUserId(action.createdByEmail),
+        eventType: ActionEventType.CREATED,
+      },
+    });
+
+    if (action.status !== ActionStatus.PLANNED) {
+      await prisma.actionTakenEvent.create({
+        data: {
+          actionTakenId: savedAction.id,
+          actorId: getUserId(action.performedByEmail ?? action.createdByEmail),
+          eventType: ActionEventType.STATUS_CHANGED,
+        },
+      });
+    }
+  }
+
+  console.log('Lab 4 seed completed successfully.');
 }
 
 main()
