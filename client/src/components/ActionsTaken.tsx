@@ -92,6 +92,7 @@ export function ActionsTaken({ ticketId, canManage = false }: { ticketId: number
   };
 
   const reloadEditing = async () => {
+    setFormError(null);
     const latest = await load();
     if (editing && latest) {
       const refreshed = latest.find((action) => action.id === editing.id);
@@ -216,7 +217,7 @@ function ActionCard({ action, canManage, isSubmitting, isCompleting, completionR
 function ActionControls({ action, isSubmitting, isCompleting, completionResult, onEdit, onStart, onCancel, onShowCompletion, onCompletionResultChange, onConfirmCompletion, onDismissCompletion }: { action: ActionTaken; isSubmitting: boolean; isCompleting: boolean; completionResult: string; onEdit: () => void; onStart: () => void; onCancel: () => void; onShowCompletion: () => void; onCompletionResultChange: (value: string) => void; onConfirmCompletion: () => void; onDismissCompletion: () => void }) {
   const terminal = action.status === 'COMPLETED' || action.status === 'CANCELLED';
   return <div style={styles.controls}>
-    {!terminal ? <button type="button" onClick={onEdit} disabled={isSubmitting} style={styles.secondaryButton}>Edit Action</button> : null}
+    {action.status !== 'CANCELLED' ? <button type="button" onClick={onEdit} disabled={isSubmitting} style={styles.secondaryButton}>Edit Action</button> : null}
     {action.status === 'PLANNED' ? <button type="button" onClick={onStart} disabled={isSubmitting} style={styles.secondaryButton}>Start</button> : null}
     {!terminal ? <button type="button" onClick={onShowCompletion} disabled={isSubmitting} style={styles.primaryButton}>Complete</button> : null}
     {!terminal ? <button type="button" onClick={onCancel} disabled={isSubmitting} style={styles.cancelButton}>Cancel Action</button> : null}
@@ -232,7 +233,7 @@ function ActionFormPanel({ form, assignees, editing, isSubmitting, error, onChan
     <label style={styles.label}>Action date and time<input required type="datetime-local" value={form.actionOccurredAt} onChange={(event) => update('actionOccurredAt', event.target.value)} disabled={isSubmitting} style={styles.input} /></label>
     <label style={styles.label}>Action description<textarea required value={form.description} onChange={(event) => update('description', event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label>
     <label style={styles.label}>Result <span style={styles.optional}>(required when completing)</span><textarea value={form.result} onChange={(event) => update('result', event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label>
-    <label style={styles.label}>Assignee<select value={form.assigneeId} onChange={(event) => update('assigneeId', event.target.value)} disabled={isSubmitting} style={styles.input}><option value="">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{personLabel(assignee, '')}</option>)}</select></label>
+    <label style={styles.label}>Assignee<select aria-label="Assignee" value={form.assigneeId} onChange={(event) => update('assigneeId', event.target.value)} disabled={isSubmitting || editing?.status === 'COMPLETED'} style={styles.input}><option value="">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{personLabel(assignee, '')}</option>)}</select>{editing?.status === 'COMPLETED' ? <span style={styles.optional}>Assignee is read-only after completion.</span> : null}</label>
     <label style={styles.checkLabel}><input type="checkbox" checked={form.followUpRequired} onChange={(event) => update('followUpRequired', event.target.checked)} disabled={isSubmitting} /> Follow-up required</label>
     {form.followUpRequired ? <label style={styles.label}>Follow-up note<textarea required value={form.followUpNote} onChange={(event) => update('followUpNote', event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label> : null}
     <label style={styles.label}>Attachment notes <span style={styles.optional}>(optional)</span><textarea value={form.attachmentNotes} onChange={(event) => update('attachmentNotes', event.target.value)} maxLength={1000} disabled={isSubmitting} style={styles.textarea} /></label>

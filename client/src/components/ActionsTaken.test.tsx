@@ -78,4 +78,17 @@ describe('ActionsTaken', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
     await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith('/api/staff/actions-taken/1/status', expect.objectContaining({ method: 'PATCH' })));
   });
+
+  it('keeps the completed action assignee read-only while allowing edits', async () => {
+    const completed = { ...action, status: 'COMPLETED' as const, result: 'VPN is stable.' };
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === '/api/tickets/12/actions-taken') return { ok: true, json: async () => [completed] } as Response;
+      if (path === '/api/staff/action-assignees') return { ok: true, json: async () => [{ id: 2, name: 'Mary Support', role: 'IT_STAFF' }] } as Response;
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<ActionsTaken ticketId={12} canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Action' }));
+    expect(screen.getByLabelText('Assignee')).toBeDisabled();
+    expect(screen.getByText('Assignee is read-only after completion.')).toBeInTheDocument();
+  });
 });
