@@ -37,8 +37,9 @@ describe('Navbar role navigation', () => {
     expect(screen.queryByRole('button', { name: 'Create Ticket' })).not.toBeInTheDocument();
   });
 
-  it('shows user management only to administrators', () => {
+  it('shows operational queue and user management to administrators', () => {
     renderNavbar('ADMINISTRATOR');
+    expect(screen.getByRole('button', { name: 'Ticket Queue' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'User Management' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'My Tickets' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create Ticket' })).not.toBeInTheDocument();

@@ -22,7 +22,7 @@ function MainApp() {
   const activeView: ViewMode = user?.role === 'IT_STAFF'
     ? (currentView === 'staff-ticket-detail' ? 'staff-ticket-detail' : 'staff-queue')
     : user?.role === 'ADMINISTRATOR'
-      ? 'user-management'
+      ? (currentView === 'staff-queue' || currentView === 'staff-ticket-detail' ? currentView : 'user-management')
       : currentView;
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
