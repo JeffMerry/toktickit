@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActionsTaken } from './ActionsTaken';
@@ -34,6 +34,7 @@ describe('ActionsTaken', () => {
     expect(screen.getByText(/Follow-up required/)).toBeInTheDocument();
     expect(screen.getByText(/Mary Support/)).toBeInTheDocument();
     expect(screen.getByText(/Edited after creation/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add Action Taken' })).not.toBeInTheDocument();
   });
 
   it('shows an explicit empty state', async () => {
@@ -47,5 +48,34 @@ describe('ActionsTaken', () => {
     render(<ActionsTaken ticketId={12} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load actions safely.');
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('shows operational create controls and submits a valid action', async () => {
+    mockedApiFetch.mockImplementation(async (path, init) => {
+      if (path === '/api/tickets/12/actions-taken') return { ok: true, json: async () => [action] } as Response;
+      if (path === '/api/staff/action-assignees') return { ok: true, json: async () => [{ id: 2, name: 'Mary Support', role: 'IT_STAFF' }] } as Response;
+      if (path === '/api/staff/tickets/12/actions-taken' && init?.method === 'POST') return { ok: true, json: async () => ({ ...action, id: 2 }) } as Response;
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<ActionsTaken ticketId={12} canManage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Action Taken' }));
+    fireEvent.change(screen.getByLabelText('Action description'), { target: { value: 'Check the VPN cable.' } });
+    fireEvent.click(screen.getByLabelText('Follow-up required'));
+    fireEvent.change(screen.getByLabelText('Follow-up note'), { target: { value: 'Confirm connectivity tomorrow.' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Add Action Taken' }));
+    await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith('/api/staff/tickets/12/actions-taken', expect.objectContaining({ method: 'POST' })));
+  });
+
+  it('starts a planned action only for an operational user', async () => {
+    const planned = { ...action, status: 'PLANNED' as const, updatedAt: action.createdAt };
+    mockedApiFetch.mockImplementation(async (path, init) => {
+      if (path === '/api/tickets/12/actions-taken') return { ok: true, json: async () => [planned] } as Response;
+      if (path === '/api/staff/action-assignees') return { ok: true, json: async () => [] } as Response;
+      if (path === '/api/staff/actions-taken/1/status' && init?.method === 'PATCH') return { ok: true, json: async () => ({ ...planned, status: 'IN_PROGRESS' }) } as Response;
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<ActionsTaken ticketId={12} canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith('/api/staff/actions-taken/1/status', expect.objectContaining({ method: 'PATCH' })));
   });
 });
