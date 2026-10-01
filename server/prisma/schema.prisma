@@ -147,6 +147,7 @@ model Ticket {
 
 model ActionTaken {
   id               Int          @id @default(autoincrement())
+  seedKey          String?      @unique
   ticketId         Int
   assigneeId       Int?
   createdById      Int

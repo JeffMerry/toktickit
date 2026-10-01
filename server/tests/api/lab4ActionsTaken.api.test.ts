@@ -113,4 +113,26 @@ describe('Lab 4 Actions Taken API', () => {
     expect(completed.body).toMatchObject({ status: 'COMPLETED', performedBy: { id: staffId } });
     await expect(prisma.actionTakenEvent.count({ where: { actionTakenId: actionId, eventType: 'STATUS_CHANGED' } })).resolves.toBe(2);
   });
+
+  it('cancels an Action Taken and keeps the terminal state immutable', async () => {
+    const created = await request(app)
+      .post(`/api/staff/tickets/${ticketId}/actions-taken`)
+      .set('Cookie', staffCookie)
+      .send({ actionOccurredAt: '2026-09-01T11:00:00.000Z', description: 'Cancel this planned follow-up after the requester withdrew it.', assigneeId: staffId, followUpRequired: false })
+      .expect(201);
+
+    const cancelled = await request(app)
+      .patch(`/api/staff/actions-taken/${created.body.id}/status`)
+      .set('Cookie', staffCookie)
+      .send({ status: 'CANCELLED', expectedUpdatedAt: created.body.updatedAt })
+      .expect(200);
+    expect(cancelled.body).toMatchObject({ status: 'CANCELLED', performedBy: null });
+    await expect(prisma.actionTakenEvent.count({ where: { actionTakenId: created.body.id, eventType: 'STATUS_CHANGED', actorId: staffId } })).resolves.toBe(1);
+
+    await request(app)
+      .patch(`/api/staff/actions-taken/${created.body.id}/status`)
+      .set('Cookie', staffCookie)
+      .send({ status: 'IN_PROGRESS', expectedUpdatedAt: cancelled.body.updatedAt })
+      .expect(422);
+  });
 });

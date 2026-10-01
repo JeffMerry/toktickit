@@ -167,13 +167,13 @@ async function main() {
     ],
   });
 
-  // Recreate only the Lab 4 demonstration actions attached to stable seed
-  // Tickets. This keeps repeated local seeds free of duplicate fixtures while
-  // retaining TKT-2026-SEED-001 as the required zero-action example.
-  await prisma.actionTaken.deleteMany({ where: { ticketId: { in: seededTicketIds } } });
+  // Upsert only fixtures carrying a stable seedKey. Do not delete Actions or
+  // audit events by ticket: those can have been created by a user after the
+  // demo data was first seeded.
 
   const actions = [
     {
+      seedKey: 'lab4-action-001',
       ticketNumber: 'TKT-2026-SEED-002',
       assigneeEmail: 'mary.support@kmutt.ac.th',
       createdByEmail: 'somchai.technician@kmutt.ac.th',
@@ -183,6 +183,7 @@ async function main() {
       followUpRequired: false,
     },
     {
+      seedKey: 'lab4-action-002',
       ticketNumber: 'TKT-2026-SEED-003',
       assigneeEmail: 'niran.engineer@kmutt.ac.th',
       createdByEmail: 'niran.engineer@kmutt.ac.th',
@@ -195,6 +196,7 @@ async function main() {
       attachmentNotes: 'See application-error-log.txt in the Ticket attachments when available.',
     },
     {
+      seedKey: 'lab4-action-003',
       ticketNumber: 'TKT-2026-SEED-003',
       assigneeEmail: 'mary.support@kmutt.ac.th',
       createdByEmail: 'niran.engineer@kmutt.ac.th',
@@ -205,6 +207,7 @@ async function main() {
       followUpNote: 'Confirm successful submission with Academic Affairs after deployment.',
     },
     {
+      seedKey: 'lab4-action-004',
       ticketNumber: 'TKT-2026-SEED-004',
       assigneeEmail: 'somchai.technician@kmutt.ac.th',
       createdByEmail: 'somchai.technician@kmutt.ac.th',
@@ -215,6 +218,7 @@ async function main() {
       followUpNote: 'Wait for the requester to confirm their most recent successful sign-in.',
     },
     {
+      seedKey: 'lab4-action-005',
       ticketNumber: 'TKT-2026-SEED-005',
       assigneeEmail: 'mary.support@kmutt.ac.th',
       createdByEmail: 'mary.support@kmutt.ac.th',
@@ -227,6 +231,7 @@ async function main() {
       attachmentNotes: 'Look for the printed test-page photo in the Ticket attachments.',
     },
     {
+      seedKey: 'lab4-action-006',
       ticketNumber: 'TKT-2026-SEED-006',
       assigneeEmail: 'niran.engineer@kmutt.ac.th',
       createdByEmail: 'niran.engineer@kmutt.ac.th',
@@ -238,6 +243,7 @@ async function main() {
       followUpRequired: false,
     },
     {
+      seedKey: 'lab4-action-007',
       ticketNumber: 'TKT-2026-SEED-007',
       assigneeEmail: 'mary.support@kmutt.ac.th',
       createdByEmail: 'mary.support@kmutt.ac.th',
@@ -249,39 +255,57 @@ async function main() {
   ];
 
   for (const action of actions) {
-    const savedAction = await prisma.actionTaken.create({
-      data: {
-        ticketId: ticketIdByNumber.get(action.ticketNumber)!,
-        assigneeId: getUserId(action.assigneeEmail),
-        createdById: getUserId(action.createdByEmail),
-        performedById: action.performedByEmail ? getUserId(action.performedByEmail) : null,
-        actionOccurredAt: action.actionOccurredAt,
-        description: action.description,
-        result: action.result ?? null,
-        status: action.status,
-        followUpRequired: action.followUpRequired,
-        followUpNote: action.followUpNote ?? null,
-        attachmentNotes: action.attachmentNotes ?? null,
+    const actionData = {
+      ticketId: ticketIdByNumber.get(action.ticketNumber)!,
+      assigneeId: getUserId(action.assigneeEmail),
+      createdById: getUserId(action.createdByEmail),
+      performedById: action.performedByEmail ? getUserId(action.performedByEmail) : null,
+      actionOccurredAt: action.actionOccurredAt,
+      description: action.description,
+      result: action.result ?? null,
+      status: action.status,
+      followUpRequired: action.followUpRequired,
+      followUpNote: action.followUpNote ?? null,
+      attachmentNotes: action.attachmentNotes ?? null,
+    };
+    const savedAction = await prisma.actionTaken.upsert({
+      where: { seedKey: action.seedKey },
+      update: actionData,
+      create: {
+        seedKey: action.seedKey,
+        ...actionData,
       },
       select: { id: true },
     });
 
-    await prisma.actionTakenEvent.create({
-      data: {
-        actionTakenId: savedAction.id,
-        actorId: getUserId(action.createdByEmail),
-        eventType: ActionEventType.CREATED,
-      },
+    const createdEvent = await prisma.actionTakenEvent.findFirst({
+      where: { actionTakenId: savedAction.id, eventType: ActionEventType.CREATED },
+      select: { id: true },
     });
-
-    if (action.status !== ActionStatus.PLANNED) {
+    if (!createdEvent) {
       await prisma.actionTakenEvent.create({
         data: {
           actionTakenId: savedAction.id,
-          actorId: getUserId(action.performedByEmail ?? action.createdByEmail),
-          eventType: ActionEventType.STATUS_CHANGED,
+          actorId: getUserId(action.createdByEmail),
+          eventType: ActionEventType.CREATED,
         },
       });
+    }
+
+    if (action.status !== ActionStatus.PLANNED) {
+      const statusEvent = await prisma.actionTakenEvent.findFirst({
+        where: { actionTakenId: savedAction.id, eventType: ActionEventType.STATUS_CHANGED },
+        select: { id: true },
+      });
+      if (!statusEvent) {
+        await prisma.actionTakenEvent.create({
+          data: {
+            actionTakenId: savedAction.id,
+            actorId: getUserId(action.performedByEmail ?? action.createdByEmail),
+            eventType: ActionEventType.STATUS_CHANGED,
+          },
+        });
+      }
     }
   }
 
