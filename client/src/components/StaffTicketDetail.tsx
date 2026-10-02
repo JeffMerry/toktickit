@@ -69,7 +69,7 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
 
   const handleStatus = (event: FormEvent) => {
     event.preventDefault();
-    if (status) void mutate(`/api/staff/tickets/${ticketId}/status`, { status, confirmed });
+    if (status) void mutate(`/api/staff/tickets/${ticketId}/status`, { currentStatus: status, confirmed });
   };
 
   const confirmationRequired = ['RESOLVED', 'CLOSED', 'CANCELLED', 'REOPENED'].includes(status);

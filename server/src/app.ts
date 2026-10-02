@@ -802,7 +802,8 @@ app.patch('/api/staff/tickets/:id/priority', requireTrustedOrigin, requireAuthen
 app.patch('/api/staff/tickets/:id/status', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
   const ticketId = Number(req.params.id);
   const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
-  const status = typeof req.body?.status === 'string' ? parseTicketStatus(req.body.status) : undefined;
+  const requestedStatus = req.body?.currentStatus ?? req.body?.status;
+  const status = typeof requestedStatus === 'string' ? parseTicketStatus(requestedStatus) : undefined;
   if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
   if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
   if (!status) return res.status(400).json({ error: 'status is invalid.' });

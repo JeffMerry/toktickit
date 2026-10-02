@@ -95,7 +95,7 @@ describe('Lab 4 ticket workflow API', () => {
     const resolve = (expectedUpdatedAt: string) => request(app)
       .patch(`/api/staff/tickets/${workflowTicketId}/status`)
       .set('Cookie', staffCookie)
-      .send({ status: 'RESOLVED', confirmed: true, expectedUpdatedAt });
+      .send({ currentStatus: 'RESOLVED', confirmed: true, expectedUpdatedAt });
 
     await resolve(initial.updatedAt.toISOString()).expect(422);
     await expect(prisma.ticket.findUniqueOrThrow({ where: { id: workflowTicketId }, select: { currentStatus: true } })).resolves.toMatchObject({ currentStatus: TicketStatus.IN_PROGRESS });
@@ -134,7 +134,7 @@ describe('Lab 4 ticket workflow API', () => {
     await request(app)
       .patch(`/api/staff/tickets/${workflowTicketId}/status`)
       .set('Cookie', staffCookie)
-      .send({ status: 'CLOSED', confirmed: true, expectedUpdatedAt: initial.updatedAt.toISOString() })
+      .send({ currentStatus: 'CLOSED', confirmed: true, expectedUpdatedAt: initial.updatedAt.toISOString() })
       .expect(409);
   });
 
@@ -143,7 +143,7 @@ describe('Lab 4 ticket workflow API', () => {
     await request(app)
       .patch(`/api/staff/tickets/${inactiveOwnerTicketId}/status`)
       .set('Cookie', staffCookie)
-      .send({ status: 'OPEN', expectedUpdatedAt: ticket.updatedAt.toISOString() })
+      .send({ currentStatus: 'OPEN', expectedUpdatedAt: ticket.updatedAt.toISOString() })
       .expect(422);
   });
 });
