@@ -13,7 +13,10 @@ export function navigationForRole(role: UserRole): NavigationItem[] {
     ];
   }
   if (role === 'IT_STAFF') return [{ view: 'staff-queue', label: 'Ticket Queue' }];
-  return [{ view: 'user-management', label: 'User Management' }];
+  return [
+    { view: 'staff-queue', label: 'Ticket Queue' },
+    { view: 'user-management', label: 'User Management' },
+  ];
 }
 
 interface NavbarProps {

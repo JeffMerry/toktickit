@@ -11,6 +11,7 @@ import { StaffTicketQueue } from './components/StaffTicketQueue';
 import { StaffTicketDetail } from './components/StaffTicketDetail';
 import { PublicCommentSection } from './components/PublicCommentSection';
 import { UserManagement } from './components/UserManagement';
+import { ActionsTaken } from './components/ActionsTaken';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
@@ -21,7 +22,7 @@ function MainApp() {
   const activeView: ViewMode = user?.role === 'IT_STAFF'
     ? (currentView === 'staff-ticket-detail' ? 'staff-ticket-detail' : 'staff-queue')
     : user?.role === 'ADMINISTRATOR'
-      ? 'user-management'
+      ? (currentView === 'staff-queue' || currentView === 'staff-ticket-detail' ? currentView : 'user-management')
       : currentView;
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
@@ -400,6 +401,7 @@ function MainApp() {
                 onBack={() => setCurrentView('my-tickets')}
               >
                 <>
+                  <ActionsTaken ticketId={ticketDetail.id} />
                   <AttachmentSection
                     ticketId={ticketDetail.id}
                     attachments={ticketDetail.attachments || []}
