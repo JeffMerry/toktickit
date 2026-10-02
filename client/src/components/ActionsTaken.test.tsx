@@ -91,4 +91,45 @@ describe('ActionsTaken', () => {
     expect(screen.getByLabelText('Assignee')).toBeDisabled();
     expect(screen.getByText('Assignee is read-only after completion.')).toBeInTheDocument();
   });
+
+  it('replaces the draft with the latest action values after a conflict reload', async () => {
+    const refreshed = { ...action, description: 'Another staff member updated this action.', updatedAt: '2026-10-01T04:00:00.000Z' };
+    let actionListCalls = 0;
+    mockedApiFetch.mockImplementation(async (path, init) => {
+      if (path === '/api/tickets/12/actions-taken') {
+        actionListCalls += 1;
+        return { ok: true, json: async () => actionListCalls === 1 ? [action] : [refreshed] } as Response;
+      }
+      if (path === '/api/staff/action-assignees') return { ok: true, json: async () => [] } as Response;
+      if (path === '/api/staff/actions-taken/1' && init?.method === 'PATCH') return { ok: false, status: 409, json: async () => ({ error: 'This Action Taken has changed.' }) } as Response;
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<ActionsTaken ticketId={12} canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Action' }));
+    fireEvent.change(screen.getByLabelText('Action description'), { target: { value: 'My stale draft.' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Edit Action Taken' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('This Action Taken has changed.');
+    fireEvent.click(screen.getByRole('button', { name: 'Reload latest action' }));
+    await waitFor(() => expect(screen.getByLabelText('Action description')).toHaveValue('Another staff member updated this action.'));
+  });
+
+  it('keeps Actions visible and retries an assignee lookup failure', async () => {
+    let assigneeCalls = 0;
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === '/api/tickets/12/actions-taken') return { ok: true, json: async () => [action] } as Response;
+      if (path === '/api/staff/action-assignees') {
+        assigneeCalls += 1;
+        return assigneeCalls === 1
+          ? { ok: false, json: async () => ({ error: 'Unable to load eligible assignees.' }) } as Response
+          : { ok: true, json: async () => [{ id: 2, name: 'Mary Support', role: 'IT_STAFF' }] } as Response;
+      }
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<ActionsTaken ticketId={12} canManage />);
+    expect(await screen.findByText('Inspect the VPN connection logs.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Action Taken' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load eligible assignees.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry assignee lookup' }));
+    await waitFor(() => expect(assigneeCalls).toBe(2));
+  });
 });

@@ -41,6 +41,7 @@ export function ActionsTaken({ ticketId, canManage = false }: { ticketId: number
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [assigneeError, setAssigneeError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ActionTaken | null>(null);
@@ -68,20 +69,24 @@ export function ActionsTaken({ ticketId, canManage = false }: { ticketId: number
 
   useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
+  const loadAssignees = useCallback(async () => {
     if (!canManage) return;
-    const loadAssignees = async () => {
-      try {
-        const response = await apiFetch('/api/staff/action-assignees');
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Unable to load eligible assignees.');
-        setAssignees(Array.isArray(data) ? data : []);
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : 'Unable to load eligible assignees.');
-      }
-    };
-    void loadAssignees();
+    setAssigneeError(null);
+    try {
+      const response = await apiFetch('/api/staff/action-assignees');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to load eligible assignees.');
+      setAssignees(Array.isArray(data) ? data : []);
+    } catch (reason) {
+      setAssigneeError(reason instanceof Error ? reason.message : 'Unable to load eligible assignees.');
+    }
   }, [canManage]);
+
+  useEffect(() => { void loadAssignees(); }, [loadAssignees]);
+
+  const retryAll = async () => {
+    await Promise.all([load(), loadAssignees()]);
+  };
 
   const closeForm = () => {
     if (isSubmitting) return;
@@ -96,7 +101,10 @@ export function ActionsTaken({ ticketId, canManage = false }: { ticketId: number
     const latest = await load();
     if (editing && latest) {
       const refreshed = latest.find((action) => action.id === editing.id);
-      if (refreshed) setEditing(refreshed);
+      if (refreshed) {
+        setEditing(refreshed);
+        setForm(formFromAction(refreshed));
+      }
     }
   };
 
@@ -175,11 +183,11 @@ export function ActionsTaken({ ticketId, canManage = false }: { ticketId: number
       {error ? (
         <div role="alert" style={styles.error}>
           <p style={{ margin: 0 }}>{error}</p>
-          <button type="button" onClick={() => void load()} style={styles.retry}>Retry</button>
+          <button type="button" onClick={() => void retryAll()} style={styles.retry}>Retry</button>
         </div>
       ) : null}
       {!isLoading && !error && actions.length === 0 ? <p style={styles.empty}>No actions have been recorded for this ticket.</p> : null}
-      {showForm ? <ActionFormPanel form={form} assignees={assignees} editing={editing} isSubmitting={isSubmitting} error={formError} onChange={setForm} onCancel={closeForm} onReload={() => void reloadEditing()} onSubmit={submitForm} /> : null}
+      {showForm ? <ActionFormPanel form={form} assignees={assignees} assigneeError={assigneeError} editing={editing} isSubmitting={isSubmitting} error={formError} onChange={setForm} onCancel={closeForm} onReload={() => void reloadEditing()} onRetryAssignees={() => void loadAssignees()} onSubmit={submitForm} /> : null}
       {!isLoading && !error && actions.length > 0 ? (
         <div style={styles.list}>
           {actions.map((action) => <ActionCard key={action.id} action={action} canManage={canManage} isSubmitting={isSubmitting} isCompleting={completion?.id === action.id} completionResult={completionResult} onEdit={() => openEdit(action)} onStart={() => void transition(action, 'IN_PROGRESS')} onCancel={() => void transition(action, 'CANCELLED')} onShowCompletion={() => { setCompletion(action); setCompletionResult(action.result || ''); }} onCompletionResultChange={setCompletionResult} onConfirmCompletion={() => void transition(action, 'COMPLETED', completionResult.trim())} onDismissCompletion={() => { setCompletion(null); setCompletionResult(''); }} />)}
@@ -225,7 +233,7 @@ function ActionControls({ action, isSubmitting, isCompleting, completionResult, 
   </div>;
 }
 
-function ActionFormPanel({ form, assignees, editing, isSubmitting, error, onChange, onCancel, onReload, onSubmit }: { form: ActionForm; assignees: Assignee[]; editing: ActionTaken | null; isSubmitting: boolean; error: string | null; onChange: (form: ActionForm) => void; onCancel: () => void; onReload: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function ActionFormPanel({ form, assignees, assigneeError, editing, isSubmitting, error, onChange, onCancel, onReload, onRetryAssignees, onSubmit }: { form: ActionForm; assignees: Assignee[]; assigneeError: string | null; editing: ActionTaken | null; isSubmitting: boolean; error: string | null; onChange: (form: ActionForm) => void; onCancel: () => void; onReload: () => void; onRetryAssignees: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const update = <K extends keyof ActionForm>(key: K, value: ActionForm[K]) => onChange({ ...form, [key]: value });
   return <form onSubmit={onSubmit} style={styles.form} aria-label={editing ? 'Edit Action Taken' : 'Add Action Taken'}>
     <h3 style={styles.formTitle}>{editing ? 'Edit Action Taken' : 'Add Action Taken'}</h3>
@@ -234,6 +242,7 @@ function ActionFormPanel({ form, assignees, editing, isSubmitting, error, onChan
     <label style={styles.label}>Action description<textarea required value={form.description} onChange={(event) => update('description', event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label>
     <label style={styles.label}>Result <span style={styles.optional}>(required when completing)</span><textarea value={form.result} onChange={(event) => update('result', event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label>
     <label style={styles.label}>Assignee<select aria-label="Assignee" value={form.assigneeId} onChange={(event) => update('assigneeId', event.target.value)} disabled={isSubmitting || editing?.status === 'COMPLETED'} style={styles.input}><option value="">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{personLabel(assignee, '')}</option>)}</select>{editing?.status === 'COMPLETED' ? <span style={styles.optional}>Assignee is read-only after completion.</span> : null}</label>
+    {assigneeError ? <div role="alert" style={styles.assigneeError}><span>{assigneeError} You can still save this Action as unassigned.</span><button type="button" onClick={onRetryAssignees} style={styles.retry}>Retry assignee lookup</button></div> : null}
     <label style={styles.checkLabel}><input type="checkbox" checked={form.followUpRequired} onChange={(event) => update('followUpRequired', event.target.checked)} disabled={isSubmitting} /> Follow-up required</label>
     {form.followUpRequired ? <label style={styles.label}>Follow-up note<textarea required value={form.followUpNote} onChange={(event) => update('followUpNote', event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label> : null}
     <label style={styles.label}>Attachment notes <span style={styles.optional}>(optional)</span><textarea value={form.attachmentNotes} onChange={(event) => update('attachmentNotes', event.target.value)} maxLength={1000} disabled={isSubmitting} style={styles.textarea} /></label>
@@ -264,6 +273,7 @@ const styles: Record<string, CSSProperties> = {
   state: { color: '#4B5563', margin: 0 },
   empty: { margin: 0, padding: '16px', borderRadius: '8px', background: '#F9FAFB', color: '#4B5563' },
   error: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '12px', border: '1px solid #FCA5A5', borderRadius: '8px', background: '#FEF2F2', color: '#991B1B' },
+  assigneeError: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '10px', border: '1px solid #FDE68A', borderRadius: '8px', background: '#FFFBEB', color: '#92400E', fontSize: '.85rem' },
   retry: { border: '1px solid #991B1B', borderRadius: '6px', padding: '7px 10px', background: '#FFF', color: '#991B1B', fontWeight: 700, cursor: 'pointer' },
   primaryButton: { border: 0, borderRadius: '6px', padding: '9px 12px', background: '#006B3C', color: '#FFF', fontWeight: 700, cursor: 'pointer' },
   secondaryButton: { border: '1px solid #9CA3AF', borderRadius: '6px', padding: '8px 11px', background: '#FFF', color: '#374151', fontWeight: 700, cursor: 'pointer' },
