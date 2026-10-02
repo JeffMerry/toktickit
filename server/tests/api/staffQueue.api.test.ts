@@ -155,6 +155,18 @@ describe('staff ticket queue API', () => {
       .send({ status: 'RESOLVED', expectedUpdatedAt: ticket.updatedAt.toISOString() })
       .expect(422);
 
+    await prisma.actionTaken.create({
+      data: {
+        ticketId: assignedTicketId,
+        createdById: userIds[0],
+        performedById: userIds[0],
+        actionOccurredAt: new Date(),
+        description: 'Verified the queue ticket fix.',
+        result: 'The fix is working as expected.',
+        status: 'COMPLETED',
+      },
+    });
+
     const updated = await request(app)
       .patch(`/api/staff/tickets/${assignedTicketId}/status`)
       .set('Cookie', staffCookie)
