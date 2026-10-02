@@ -12,6 +12,7 @@ import { StaffTicketDetail } from './components/StaffTicketDetail';
 import { PublicCommentSection } from './components/PublicCommentSection';
 import { UserManagement } from './components/UserManagement';
 import { ActionsTaken } from './components/ActionsTaken';
+import { RequesterResolutionIndication } from './components/RequesterResolutionIndication';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
@@ -401,6 +402,11 @@ function MainApp() {
                 onBack={() => setCurrentView('my-tickets')}
               >
                 <>
+                  <RequesterResolutionIndication
+                    ticketId={ticketDetail.id}
+                    requesterResolvedAt={ticketDetail.requesterResolvedAt}
+                    onRecorded={() => selectedTicketId ? fetchTicketDetail(selectedTicketId) : undefined}
+                  />
                   <ActionsTaken ticketId={ticketDetail.id} />
                   <AttachmentSection
                     ticketId={ticketDetail.id}
