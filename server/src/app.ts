@@ -948,6 +948,7 @@ app.post('/api/staff/tickets/:id/actions-taken', requireTrustedOrigin, requireAu
         include: actionInclude,
       });
       await tx.actionTakenEvent.create({ data: { actionTakenId: created.id, actorId: req.auth!.user.id, eventType: 'CREATED' } });
+      await tx.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } });
       return created;
     });
     return res.status(201).json(action);
@@ -995,6 +996,7 @@ app.patch('/api/staff/actions-taken/:id', requireTrustedOrigin, requireAuthentic
       });
       if (updated.count !== 1) return undefined;
       await tx.actionTakenEvent.create({ data: { actionTakenId: actionId, actorId: req.auth!.user.id, eventType: 'UPDATED' } });
+      await tx.ticket.update({ where: { id: current.ticketId }, data: { updatedAt: new Date() } });
       return tx.actionTaken.findUnique({ where: { id: actionId }, include: actionInclude });
     });
     if (!action) return res.status(409).json({ error: 'Action Taken has changed. Refresh and try again.' });
@@ -1033,6 +1035,7 @@ app.patch('/api/staff/actions-taken/:id/status', requireTrustedOrigin, requireAu
       });
       if (updated.count !== 1) return undefined;
       await tx.actionTakenEvent.create({ data: { actionTakenId: actionId, actorId: req.auth!.user.id, eventType: 'STATUS_CHANGED' } });
+      await tx.ticket.update({ where: { id: current.ticketId }, data: { updatedAt: new Date() } });
       return tx.actionTaken.findUnique({ where: { id: actionId }, include: actionInclude });
     });
     if (!action) return res.status(409).json({ error: 'Action Taken has changed. Refresh and try again.' });

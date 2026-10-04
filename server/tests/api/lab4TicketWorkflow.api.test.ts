@@ -14,6 +14,7 @@ let staffId = 0;
 let workflowTicketId = 0;
 let indicationTicketId = 0;
 let inactiveOwnerTicketId = 0;
+let staleActionTicketId = 0;
 let ticketIds: number[] = [];
 let userIds: number[] = [];
 
@@ -39,16 +40,18 @@ beforeAll(async () => {
   otherRequesterId = otherRequester.id;
   staffId = staff.id;
   userIds = [requester.id, otherRequester.id, staff.id, inactiveStaff.id];
-  await prisma.ticket.deleteMany({ where: { ticketNumber: { in: ['TKT-2026-LAB4-WORKFLOW', 'TKT-2026-LAB4-INDICATION', 'TKT-2026-LAB4-INACTIVE-OWNER'] } } });
+  await prisma.ticket.deleteMany({ where: { ticketNumber: { in: ['TKT-2026-LAB4-WORKFLOW', 'TKT-2026-LAB4-INDICATION', 'TKT-2026-LAB4-INACTIVE-OWNER', 'TKT-2026-LAB4-STALE-ACTION'] } } });
   const tickets = await prisma.ticket.createManyAndReturn({ data: [
     { ticketNumber: 'TKT-2026-LAB4-WORKFLOW', requesterId, ownerId: staff.id, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'HIGH', itPriority: 'HIGH', currentStatus: TicketStatus.IN_PROGRESS, summary: 'Lab 4 workflow resolution gate', description: 'Ticket fixture for workflow validation.' },
     { ticketNumber: 'TKT-2026-LAB4-INDICATION', requesterId, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'MEDIUM', itPriority: 'MEDIUM', currentStatus: TicketStatus.WAITING_FOR_REQUESTER, summary: 'Lab 4 requester indication', description: 'Ticket fixture for requester advisory indication.' },
     { ticketNumber: 'TKT-2026-LAB4-INACTIVE-OWNER', requesterId, ownerId: inactiveStaff.id, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'LOW', itPriority: 'LOW', currentStatus: TicketStatus.NEW, summary: 'Lab 4 inactive owner', description: 'Ticket fixture for active owner validation.' },
+    { ticketNumber: 'TKT-2026-LAB4-STALE-ACTION', requesterId, ownerId: staff.id, categoryId: category.id, relatedSystemId: system.id, requestedPriority: 'HIGH', itPriority: 'HIGH', currentStatus: TicketStatus.IN_PROGRESS, summary: 'Lab 4 stale action guard', description: 'Ticket fixture for action and resolution concurrency coverage.' },
   ] });
   ticketIds = tickets.map((ticket) => ticket.id);
   workflowTicketId = tickets.find((ticket) => ticket.ticketNumber === 'TKT-2026-LAB4-WORKFLOW')!.id;
   indicationTicketId = tickets.find((ticket) => ticket.ticketNumber === 'TKT-2026-LAB4-INDICATION')!.id;
   inactiveOwnerTicketId = tickets.find((ticket) => ticket.ticketNumber === 'TKT-2026-LAB4-INACTIVE-OWNER')!.id;
+  staleActionTicketId = tickets.find((ticket) => ticket.ticketNumber === 'TKT-2026-LAB4-STALE-ACTION')!.id;
   [requesterCookie, otherRequesterCookie, staffCookie] = await Promise.all([
     sessionCookie(requester.id),
     sessionCookie(otherRequester.id),
@@ -144,6 +147,49 @@ describe('Lab 4 ticket workflow API', () => {
       .patch(`/api/staff/tickets/${inactiveOwnerTicketId}/status`)
       .set('Cookie', staffCookie)
       .send({ currentStatus: 'OPEN', expectedUpdatedAt: ticket.updatedAt.toISOString() })
+      .expect(422);
+  });
+
+  it('rejects a stale resolution request when an Action changes after the Ticket was read', async () => {
+    await prisma.actionTaken.create({
+      data: {
+        ticketId: staleActionTicketId,
+        createdById: staffId,
+        performedById: staffId,
+        actionOccurredAt: new Date(),
+        description: 'Verify the service before resolution.',
+        result: 'The service is working correctly.',
+        status: 'COMPLETED',
+      },
+    });
+    await prisma.ticket.update({ where: { id: staleActionTicketId }, data: { updatedAt: new Date(Date.now() - 1_000) } });
+    const beforeAction = await prisma.ticket.findUniqueOrThrow({ where: { id: staleActionTicketId }, select: { updatedAt: true } });
+
+    await request(app)
+      .post(`/api/staff/tickets/${staleActionTicketId}/actions-taken`)
+      .set('Cookie', staffCookie)
+      .send({
+        actionOccurredAt: new Date().toISOString(),
+        description: 'Confirm the requester follow-up.',
+        followUpRequired: true,
+        followUpNote: 'Wait for the requester to confirm the outcome.',
+      })
+      .expect(201);
+
+    const afterAction = await prisma.ticket.findUniqueOrThrow({ where: { id: staleActionTicketId }, select: { updatedAt: true } });
+    expect(afterAction.updatedAt.getTime()).toBeGreaterThan(beforeAction.updatedAt.getTime());
+
+    await request(app)
+      .patch(`/api/staff/tickets/${staleActionTicketId}/status`)
+      .set('Cookie', staffCookie)
+      .send({ currentStatus: 'RESOLVED', confirmed: true, expectedUpdatedAt: beforeAction.updatedAt.toISOString() })
+      .expect(409);
+    await expect(prisma.ticket.findUniqueOrThrow({ where: { id: staleActionTicketId }, select: { currentStatus: true } })).resolves.toMatchObject({ currentStatus: TicketStatus.IN_PROGRESS });
+
+    await request(app)
+      .patch(`/api/staff/tickets/${staleActionTicketId}/status`)
+      .set('Cookie', staffCookie)
+      .send({ currentStatus: 'RESOLVED', confirmed: true, expectedUpdatedAt: afterAction.updatedAt.toISOString() })
       .expect(422);
   });
 });
