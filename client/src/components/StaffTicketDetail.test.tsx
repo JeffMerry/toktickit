@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StaffTicketDetail } from './StaffTicketDetail';
@@ -36,5 +36,9 @@ describe('StaffTicketDetail', () => {
     expect(screen.getByRole('button', { name: 'Add Public Comment' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add Internal Note' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add Action Taken' })).toBeInTheDocument();
+    expect(screen.queryByText('I confirm this status change.')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Next status'), { target: { value: 'CANCELLED' } });
+    expect(screen.getByText('I confirm this status change.')).toBeInTheDocument();
   });
 });

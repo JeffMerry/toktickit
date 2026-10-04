@@ -802,23 +802,49 @@ app.patch('/api/staff/tickets/:id/priority', requireTrustedOrigin, requireAuthen
 app.patch('/api/staff/tickets/:id/status', requireTrustedOrigin, requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
   const ticketId = Number(req.params.id);
   const expectedUpdatedAt = parseExpectedUpdatedAt(req.body?.expectedUpdatedAt);
-  const status = typeof req.body?.status === 'string' ? parseTicketStatus(req.body.status) : undefined;
+  const requestedStatus = req.body?.currentStatus ?? req.body?.status;
+  const status = typeof requestedStatus === 'string' ? parseTicketStatus(requestedStatus) : undefined;
   if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
   if (!expectedUpdatedAt) return res.status(400).json({ error: 'expectedUpdatedAt must be a valid timestamp.' });
   if (!status) return res.status(400).json({ error: 'status is invalid.' });
 
   try {
-    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { currentStatus: true, ownerId: true, updatedAt: true } });
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        currentStatus: true,
+        updatedAt: true,
+        owner: { select: { id: true, isActive: true, role: true } },
+      },
+    });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
     if (ticket.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return res.status(409).json({ error: 'Ticket has changed. Refresh and try again.' });
     if (!isAllowedStatusTransition(ticket.currentStatus, status)) {
       return res.status(422).json({ error: 'This status transition is not allowed.' });
     }
-    if (transitionRequiresOwner(ticket.currentStatus, status) && ticket.ownerId === null) {
-      return res.status(422).json({ error: 'An owner is required for this status transition.' });
+    if (transitionRequiresOwner(ticket.currentStatus, status)) {
+      if (!ticket.owner || !ticket.owner.isActive || !isOperationalRole(ticket.owner.role)) {
+        return res.status(422).json({ error: 'An active operational owner is required for this status transition.' });
+      }
     }
     if (transitionRequiresConfirmation(status) && req.body?.confirmed !== true) {
       return res.status(422).json({ error: 'Confirmation is required for this status transition.' });
+    }
+    if (status === 'RESOLVED') {
+      const actions = await prisma.actionTaken.findMany({
+        where: { ticketId },
+        select: { status: true, result: true, followUpRequired: true },
+      });
+      const hasCompletedResult = actions.some((action) => action.status === 'COMPLETED' && Boolean(action.result?.trim()));
+      const hasUnfinishedFollowUp = actions.some(
+        (action) => action.followUpRequired && (action.status === 'PLANNED' || action.status === 'IN_PROGRESS'),
+      );
+      if (!hasCompletedResult) {
+        return res.status(422).json({ error: 'Resolving a ticket requires a completed action with a non-empty result.' });
+      }
+      if (hasUnfinishedFollowUp) {
+        return res.status(422).json({ error: 'Resolve unfinished follow-up actions before resolving this ticket.' });
+      }
     }
 
     const updated = await prisma.ticket.updateMany({ where: { id: ticketId, updatedAt: expectedUpdatedAt }, data: { currentStatus: status } });
@@ -827,6 +853,35 @@ app.patch('/api/staff/tickets/:id/status', requireTrustedOrigin, requireAuthenti
   } catch (error) {
     console.error('Error updating ticket status:', error);
     return res.status(500).json({ error: 'Failed to update ticket status.' });
+  }
+});
+
+// POST /api/tickets/:id/resolution-indication — requester advisory only; formal status is unchanged
+app.post('/api/tickets/:id/resolution-indication', requireTrustedOrigin, requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isInteger(ticketId) || ticketId <= 0) return res.status(400).json({ error: 'Valid ticket ID is required.' });
+  if (rejectClientSuppliedRequesterId(req, res)) return;
+
+  try {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true, requesterId: true, requesterResolvedAt: true },
+    });
+    if (!ticket || ticket.requesterId !== req.auth!.user.id) {
+      return res.status(404).json({ error: 'Ticket not found.' });
+    }
+
+    if (!ticket.requesterResolvedAt) {
+      await prisma.ticket.updateMany({
+        where: { id: ticketId, requesterId: req.auth!.user.id, requesterResolvedAt: null },
+        data: { requesterResolvedAt: new Date() },
+      });
+    }
+
+    return res.json(await prisma.ticket.findUnique({ where: { id: ticketId } }));
+  } catch (error) {
+    console.error('Error recording requester resolution indication:', error);
+    return res.status(500).json({ error: 'Failed to record requester resolution indication.' });
   }
 });
 
@@ -893,6 +948,7 @@ app.post('/api/staff/tickets/:id/actions-taken', requireTrustedOrigin, requireAu
         include: actionInclude,
       });
       await tx.actionTakenEvent.create({ data: { actionTakenId: created.id, actorId: req.auth!.user.id, eventType: 'CREATED' } });
+      await tx.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } });
       return created;
     });
     return res.status(201).json(action);
@@ -940,6 +996,7 @@ app.patch('/api/staff/actions-taken/:id', requireTrustedOrigin, requireAuthentic
       });
       if (updated.count !== 1) return undefined;
       await tx.actionTakenEvent.create({ data: { actionTakenId: actionId, actorId: req.auth!.user.id, eventType: 'UPDATED' } });
+      await tx.ticket.update({ where: { id: current.ticketId }, data: { updatedAt: new Date() } });
       return tx.actionTaken.findUnique({ where: { id: actionId }, include: actionInclude });
     });
     if (!action) return res.status(409).json({ error: 'Action Taken has changed. Refresh and try again.' });
@@ -978,6 +1035,7 @@ app.patch('/api/staff/actions-taken/:id/status', requireTrustedOrigin, requireAu
       });
       if (updated.count !== 1) return undefined;
       await tx.actionTakenEvent.create({ data: { actionTakenId: actionId, actorId: req.auth!.user.id, eventType: 'STATUS_CHANGED' } });
+      await tx.ticket.update({ where: { id: current.ticketId }, data: { updatedAt: new Date() } });
       return tx.actionTaken.findUnique({ where: { id: actionId }, include: actionInclude });
     });
     if (!action) return res.status(409).json({ error: 'Action Taken has changed. Refresh and try again.' });
