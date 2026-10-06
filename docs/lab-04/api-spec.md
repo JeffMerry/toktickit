@@ -149,6 +149,8 @@ Requester only. The server scopes every query to the authenticated requester. Ex
 
 Recent arrays contain at most five safe Ticket summaries: `id`, `ticketNumber`, `summary`, `currentStatus`, `updatedAt`, `requestedPriority`, and `itPriority` where already visible to the Requester.
 
+`recentlyUpdated` means `updatedAt` within the previous 30 days. Since this schema does not have a separate formal resolution timestamp, `recentlyResolved` means a Ticket currently in `RESOLVED` whose `updatedAt` falls in that same window. Both recent lists use `updatedAt DESC, id DESC`; the attention list shows the five most recently updated owned Tickets. Dashboard drill-downs use `terminal=false`, `status`, and `updatedSince` on My Tickets. The `updatedSince` timestamp is supplied by the dashboard response, so its matching count remains stable when opened.
+
 ### 4.2 IT Staff Dashboard
 
 ```http
@@ -173,6 +175,8 @@ IT Staff and Administrator only. Example metric names:
 ```
 
 `urgentTickets` and `recentTickets` contain at most five Queue-safe Ticket summaries. All count values are integers, including zero.
+
+The Queue accepts dashboard drill-downs through `assignment`, `ownerId`, `status`, `itPriority`, `terminal=false`, `urgentActive=true`, and `updatedSince`. `urgentActive=true` means `URGENT` with any status except `CLOSED` or `CANCELLED`, as required by BR-21. Status and IT-priority distributions count all Tickets, including terminal Tickets. Lists use `updatedAt DESC, id DESC` and contain at most five Tickets. Requester and staff dashboard endpoints reject client query parameters; the Requester ID always comes from the session.
 
 ## 5. Compatibility and failure behavior
 

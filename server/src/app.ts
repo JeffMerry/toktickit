@@ -63,6 +63,17 @@ const adminUserSelect = {
   updatedAt: true,
 } as const;
 
+const dashboardActiveStatuses: TicketStatus[] = ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'REOPENED'];
+const dashboardUrgentStatuses: TicketStatus[] = [...dashboardActiveStatuses, 'RESOLVED'];
+const dashboardStatuses: TicketStatus[] = ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'RESOLVED', 'CLOSED', 'REOPENED', 'CANCELLED'];
+const dashboardPriorities: Priority[] = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+const dashboardTicketSelect = { id: true, ticketNumber: true, summary: true, currentStatus: true, updatedAt: true, requestedPriority: true, itPriority: true } as const;
+const dashboardWindow = () => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+function dashboardMetric(value: number, view: 'my-tickets' | 'staff-queue', filters: Record<string, string | boolean>) {
+  return { value, drillDown: { view, filters } };
+}
+
 function sessionCookieOptions() {
   return {
     httpOnly: true,
@@ -375,10 +386,86 @@ app.get('/api/related-systems', async (req, res) => {
 });
 
 // GET /api/staff/tickets — shared operational ticket queue
+app.get('/api/dashboard/requester', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
+  if (Object.keys(req.query).length) return res.status(400).json({ error: 'Dashboard filters are not supported.' });
+  try {
+    const requesterId = req.auth!.user.id;
+    const since = dashboardWindow();
+    const [openTickets, waitingForRequester, recentlyUpdated, recentlyResolved, attentionTickets, recentResolvedTickets] = await Promise.all([
+      prisma.ticket.count({ where: { requesterId, currentStatus: { in: dashboardActiveStatuses } } }),
+      prisma.ticket.count({ where: { requesterId, currentStatus: 'WAITING_FOR_REQUESTER' } }),
+      prisma.ticket.count({ where: { requesterId, updatedAt: { gte: since } } }),
+      prisma.ticket.count({ where: { requesterId, currentStatus: 'RESOLVED', updatedAt: { gte: since } } }),
+      prisma.ticket.findMany({ where: { requesterId }, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: 5, select: dashboardTicketSelect }),
+      prisma.ticket.findMany({ where: { requesterId, currentStatus: 'RESOLVED', updatedAt: { gte: since } }, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: 5, select: dashboardTicketSelect }),
+    ]);
+    return res.json({
+      metrics: {
+        openTickets: dashboardMetric(openTickets, 'my-tickets', { terminal: false }),
+        waitingForRequester: dashboardMetric(waitingForRequester, 'my-tickets', { status: 'WAITING_FOR_REQUESTER' }),
+        recentlyUpdated: dashboardMetric(recentlyUpdated, 'my-tickets', { updatedSince: since.toISOString(), sortBy: 'updatedAt', sortOrder: 'desc' }),
+        recentlyResolved: dashboardMetric(recentlyResolved, 'my-tickets', { status: 'RESOLVED', updatedSince: since.toISOString() }),
+      },
+      attentionTickets,
+      recentResolvedTickets,
+    });
+  } catch (error) {
+    console.error('Error fetching requester dashboard:', error);
+    return res.status(500).json({ error: 'Failed to fetch dashboard.' });
+  }
+});
+
+app.get('/api/dashboard/staff', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
+  if (Object.keys(req.query).length) return res.status(400).json({ error: 'Dashboard filters are not supported.' });
+  try {
+    const user = req.auth!.user;
+    const since = dashboardWindow();
+    const [unassignedTickets, myOwnedTickets, urgentActiveTickets, recentlyUpdatedTickets, statusGroups, priorityGroups, urgentTickets, recentTickets] = await Promise.all([
+      prisma.ticket.count({ where: { ownerId: null, currentStatus: { in: dashboardActiveStatuses } } }),
+      user.role === 'IT_STAFF' ? prisma.ticket.count({ where: { ownerId: user.id, currentStatus: { in: dashboardActiveStatuses } } }) : Promise.resolve(0),
+      prisma.ticket.count({ where: { itPriority: 'URGENT', currentStatus: { in: dashboardUrgentStatuses } } }),
+      prisma.ticket.count({ where: { updatedAt: { gte: since } } }),
+      prisma.ticket.groupBy({ by: ['currentStatus'], _count: { _all: true } }),
+      prisma.ticket.groupBy({ by: ['itPriority'], _count: { _all: true } }),
+      prisma.ticket.findMany({ where: { itPriority: 'URGENT', currentStatus: { in: dashboardUrgentStatuses } }, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: 5, select: dashboardTicketSelect }),
+      prisma.ticket.findMany({ where: { updatedAt: { gte: since } }, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: 5, select: dashboardTicketSelect }),
+    ]);
+    return res.json({
+      metrics: {
+        unassignedTickets: dashboardMetric(unassignedTickets, 'staff-queue', { assignment: 'unassigned', terminal: false }),
+        myOwnedTickets: dashboardMetric(myOwnedTickets, 'staff-queue', { ownerId: String(user.id), terminal: false }),
+        urgentActiveTickets: dashboardMetric(urgentActiveTickets, 'staff-queue', { itPriority: 'URGENT', urgentActive: true }),
+        recentlyUpdatedTickets: dashboardMetric(recentlyUpdatedTickets, 'staff-queue', { updatedSince: since.toISOString(), sortBy: 'updatedAt', sortOrder: 'desc' }),
+      },
+      byStatus: dashboardStatuses.map((status) => ({ status, value: statusGroups.find((row) => row.currentStatus === status)?._count._all ?? 0 })),
+      byItPriority: dashboardPriorities.map((priority) => ({ priority, value: priorityGroups.find((row) => row.itPriority === priority)?._count._all ?? 0 })),
+      urgentTickets,
+      recentTickets,
+    });
+  } catch (error) {
+    console.error('Error fetching staff dashboard:', error);
+    return res.status(500).json({ error: 'Failed to fetch dashboard.' });
+  }
+});
+
 app.get('/api/staff/tickets', requireAuthentication, requireOperationalUser, async (req: AuthenticatedRequest, res) => {
   try {
-    const { search, categoryId, requestedPriority, itPriority, status, ownerId, assignment, sortBy, sortOrder, page, limit } = req.query;
+    const { search, categoryId, requestedPriority, itPriority, status, ownerId, assignment, terminal, urgentActive, updatedSince, sortBy, sortOrder, page, limit } = req.query;
     const where: Prisma.TicketWhereInput = {};
+
+    if (terminal !== undefined) {
+      if (terminal !== 'false') return res.status(400).json({ error: 'terminal must be false.' });
+      where.currentStatus = { in: dashboardActiveStatuses };
+    }
+    if (urgentActive !== undefined) {
+      if (urgentActive !== 'true') return res.status(400).json({ error: 'urgentActive must be true.' });
+      where.currentStatus = { in: dashboardUrgentStatuses };
+      where.itPriority = 'URGENT';
+    }
+    if (updatedSince !== undefined) {
+      if (typeof updatedSince !== 'string' || !Number.isFinite(Date.parse(updatedSince))) return res.status(400).json({ error: 'updatedSince is invalid.' });
+      where.updatedAt = { gte: new Date(updatedSince) };
+    }
 
     if (search && typeof search === 'string' && search.trim()) {
       const searchTerm = search.trim();
@@ -414,6 +501,7 @@ app.get('/api/staff/tickets', requireAuthentication, requireOperationalUser, asy
       where.itPriority = priority;
     }
     if (status) {
+      if (terminal !== undefined || urgentActive !== undefined) return res.status(400).json({ error: 'status cannot be combined with a dashboard status filter.' });
       if (typeof status !== 'string' || !parseTicketStatus(status)) {
         return res.status(400).json({ error: 'status is invalid.' });
       }
@@ -426,6 +514,7 @@ app.get('/api/staff/tickets', requireAuthentication, requireOperationalUser, asy
       return res.status(400).json({ error: 'assignment must be assigned or unassigned.' });
     }
     if (ownerId) {
+      if (assignment) return res.status(400).json({ error: 'ownerId cannot be combined with assignment.' });
       const parsedOwnerId = Number(ownerId);
       if (!Number.isInteger(parsedOwnerId) || parsedOwnerId <= 0) {
         return res.status(400).json({ error: 'ownerId must be a positive integer.' });
@@ -1115,12 +1204,21 @@ app.post('/api/staff/tickets/:id/internal-notes', requireTrustedOrigin, requireA
 // GET /api/tickets — ดึงรายการตั๋วของผู้แจ้งซ่อม (Ownership Isolation, Search, Filter, Sort, Pagination)
 app.get('/api/tickets', requireAuthentication, requireRequester, async (req: AuthenticatedRequest, res) => {
   try {
-    const { search, categoryId, priority, status, sortBy, sortOrder, page, limit } = req.query;
+    const { search, categoryId, priority, status, terminal, updatedSince, sortBy, sortOrder, page, limit } = req.query;
     if (rejectClientSuppliedRequesterId(req, res)) return;
 
     const where: Prisma.TicketWhereInput = {
       requesterId: req.auth!.user.id,
     };
+
+    if (terminal !== undefined) {
+      if (terminal !== 'false') return res.status(400).json({ error: 'terminal must be false.' });
+      where.currentStatus = { in: dashboardActiveStatuses };
+    }
+    if (updatedSince !== undefined) {
+      if (typeof updatedSince !== 'string' || !Number.isFinite(Date.parse(updatedSince))) return res.status(400).json({ error: 'updatedSince is invalid.' });
+      where.updatedAt = { gte: new Date(updatedSince) };
+    }
 
     if (search && typeof search === 'string' && search.trim() !== '') {
       const searchTerm = search.trim();
@@ -1142,6 +1240,7 @@ app.get('/api/tickets', requireAuthentication, requireRequester, async (req: Aut
     }
 
     if (status && typeof status === 'string' && status.trim() !== '') {
+      if (terminal !== undefined) return res.status(400).json({ error: 'status cannot be combined with terminal.' });
       const parsedStatus = parseTicketStatus(status);
       if (parsedStatus) {
         where.currentStatus = parsedStatus;
