@@ -1,6 +1,6 @@
 # Lab 4 Release Evidence
 
-Feature-branch verification on 2026-10-06 for `feature/24-lab4-final-verification` (commits `d7b4ef0`, `0c2c3fe`). This is **not** evidence that the final `lab4-staging` to `main` PR has been approved or merged.
+Feature-branch verification was completed on 2026-10-06 for `feature/24-lab4-final-verification` (commits `d7b4ef0`, `0c2c3fe`). Integrated verification was then completed on `lab4-staging` source commit `4ac723d54ccf3478d1a378de6c7e497188515c12`. This is **not** evidence that the final `lab4-staging` to `main` PR has been approved or merged.
 
 ## Test evidence
 
@@ -9,6 +9,10 @@ Feature-branch verification on 2026-10-06 for `feature/24-lab4-final-verificatio
 - Chromium browser regression: 7 journeys passed (4 Lab 3, 3 Lab 4).
 - Fresh database migration passed; running the Lab 4 seed twice kept User/Ticket/Action Taken counts at `10/8/7`.
 - Screenshot capture passed: 12 images, with no horizontal overflow at 1440, 768, and 320 px.
+
+On the integrated staging commit, a separate empty PostgreSQL database accepted all 7 migrations; two seed runs kept User/Ticket/Action Taken counts at `10/8/7`. Server tests passed 17 files / 60 tests, client tests passed 9 files / 20 tests, both production builds passed, and the reseeded Chromium E2E suite passed 7/7 journeys. The screenshots above were captured on the feature branch and were not recaptured for this staging run.
+
+On the focus-fix code later committed as `3ec883c`, the Lab 4 SQL migrations preserved synthetic populated Lab 3 records and relationships. A newly added Chromium keyboard-focus check exposed missing focus movement in the Actions Taken panels and focus loss after save caused by a full parent-detail refresh. After focus management and an in-place refresh fix, client tests and build passed, and the full browser suite passed 8/8 journeys, including open/Cancel/Save/status focus checks. This is automated focus evidence; a manual visual audit and migration of a real Lab 3 database snapshot remain pending.
 
 See [tests.md](tests.md) for commands, traceability, and untested portions.
 
@@ -27,7 +31,7 @@ The screenshots use seeded demonstration accounts only. They are recreated with 
 
 ## Before final release
 
-1. Open a PR from `feature/24-lab4-final-verification` to `lab4-staging` and obtain peer review.
-2. After merge, rerun tests/builds on the actual `lab4-staging` head and record the commit and outputs in [tests.md](tests.md).
-3. Review keyboard navigation/focus and the remaining browser scenarios called out as partial in the test matrix.
-4. Open the final `lab4-staging` to `main` PR, obtain approval, and merge only after checks pass.
+1. If a real pre-Lab-4 database snapshot is available, test migration on a recoverable copy; the synthetic fixture check does not prove every historical data shape.
+2. Review visible keyboard focus manually and the remaining browser scenarios called out as partial in the test matrix.
+3. Open the final `lab4-staging` to `main` PR, obtain approval, and merge after the required checks pass.
+4. After merging, record verification on the actual `main` commit in [tests.md](tests.md).

@@ -1,6 +1,6 @@
 # Lab 4 Test Plan and Traceability
 
-> Status: Feature-branch verification on 2026-10-06. A `Passed` row means the named check ran locally; `Not run separately` means the scenario is covered elsewhere or still needs the stated dedicated check. Final `lab4-staging` and `main` verification remain pending.
+> Status: Integrated `lab4-staging` verification was run on source commit `4ac723d54ccf3478d1a378de6c7e497188515c12` on 2026-10-06, followed by a keyboard-focus fix committed as `3ec883c` and a regression rerun on that code. A `Passed` row means the named check ran locally; `Not run separately` means the scenario is covered elsewhere or still needs the stated dedicated check. A real Lab 3 database snapshot migration, manual visual keyboard/focus review, and final `main` verification remain pending.
 
 ## 1. Test Strategy
 
@@ -47,7 +47,7 @@ The final E2E command is run after an explicit seed because browser flows change
 | API-DASH-02 | API | FR-11, BR-19 to BR-21, AC-08 | IT Staff dashboard metrics over known fixtures | Unassigned, owned, status, priority, urgent, and recent values match queries | `server/tests/api/lab4Dashboards.api.test.ts` | Passed locally against database counts |
 | API-DASH-03 | API | FR-10 to FR-12 | Wrong role calls dashboard route | `403`; no dashboard payload is leaked | `server/tests/api/lab4Dashboards.api.test.ts` | Passed locally |
 | API-DASH-04 | API | BR-19, AC-09 | No matching Tickets | Zero-valued metrics and empty arrays are returned | `server/tests/api/lab4Dashboards.api.test.ts` | Passed locally for empty Requester |
-| MIG-01 | Migration | Data Changes, AC-11 | Apply additive migration to representative legacy database | Existing Tickets, attachments, comments, notes, and users remain valid | Disposable `toktickit_lab4_verification` database | Fresh migration passed; representative legacy snapshot not tested |
+| MIG-01 | Migration | Data Changes, AC-11 | Apply additive migration to representative legacy database | Existing Tickets, attachments, comments, notes, and users remain valid | Disposable `toktickit_lab4_verification` database | Fresh Prisma migration passed; Lab 4 SQL migrations passed on a synthetic populated Lab 3 schema; real Lab 3 snapshot not tested |
 | MIG-02 | Migration | Seed decision | Run seed twice | Stable fixture keys; no duplicate Actions Taken or users | Manual count check on disposable database | Passed: User/Ticket/Action Taken counts stayed `10/8/7` |
 | REG-01 | API | FR-15, AC-11 | Run retained Lab 3 requester, staff, admin, attachment, comment, and note tests | Existing behavior remains passing | Existing `server/tests/api/*.test.ts` | Passed: 17 files, 60 tests |
 | UI-ACT-01 | UI | FR-01 to FR-05 | Render operational Action list/create/edit and Requester read-only mode | Correct fields, permissions, empty, and validation states | `client/src/components/ActionsTaken.test.tsx` | Passed locally |
@@ -55,7 +55,7 @@ The final E2E command is run after an explicit seed because browser flows change
 | UI-WF-01 | UI | FR-09, AC-05 | Status controls for each role and resolution gate feedback | Only permitted options render; explanatory feedback appears | `client/src/components/StaffTicketDetail.test.tsx`, `RequesterResolutionIndication.test.tsx` | Passed locally |
 | UI-REQ-DASH-01 | UI | FR-10, FR-13, AC-07 | Requester metrics, zero state, and drill-down | Owned cards and accessible destinations render | `client/src/components/Dashboards.test.tsx` | Passed locally |
 | UI-STAFF-DASH-01 | UI | FR-11 to FR-14, AC-08 | Staff metrics, lists, empty state, and drill-down | Correct safe cards and queue destinations render | `client/src/components/Dashboards.test.tsx` | Passed locally, including retry |
-| UI-A11Y-01 | UI style | FR-17, AC-10 | Labels, keyboard focus, non-color cues, and modal/panel controls | Semantics and visible focus pass automated/manual checks | Component tests and Playwright role locators | Partial; manual keyboard/focus audit not completed |
+| UI-A11Y-01 | UI style | FR-17, AC-10 | Labels, keyboard focus, non-color cues, and modal/panel controls | Semantics and visible focus pass automated/manual checks | Component tests and Playwright role locators | Automated keyboard focus open/Cancel/Save/status checks pass in `e2e/lab-04/keyboard-focus.spec.ts`; manual visual audit not completed |
 | VIS-01 | Visual | FR-17, AC-10 | Desktop 1440 px, tablet 768 px, and mobile 320 px inspection | No clipping, overlap, or horizontal overflow | `e2e/evidence/capture-lab4-screenshots.spec.ts` | Passed: 12 screenshots, width assertion at each viewport |
 | PERF-01 | Smoke | FR-14 | Dashboard queries over seed-scale data | Endpoint responds without full Ticket collection or server error | `server/tests/api/lab4Dashboards.api.test.ts` | Seed-scale smoke passed; no load/performance benchmark |
 | E2E-01 | E2E | AC-01 to AC-03 | Staff creates and completes an Action; Requester reads own Action list | Authorized Action flow succeeds | `e2e/lab-04/actions-taken-flow.spec.ts` | Passed; editing and multiple Actions not exercised in browser |
@@ -107,4 +107,29 @@ Final-verification feature branch run (2026-10-06, `feature/24-lab4-final-verifi
 
 The browser run detected and prompted fixes for the post-save Action form, stale Ticket timestamp after Action changes, and a 320 px Staff detail overflow. The screenshots were captured again after the responsive fix. React/Vite printed non-failing inline-style shorthand warnings during browser runs; they were not treated as a passing accessibility audit.
 
-Final integration verification on `lab4-staging` and later `main`, PR approval, and any manual keyboard/focus review are **pending**. Record the final commit and observed results here after those steps; do not inherit feature-branch results as proof of a later merge.
+Integrated staging run (2026-10-06, `lab4-staging` source commit `4ac723d54ccf3478d1a378de6c7e497188515c12`):
+
+| Command / check | Observed result |
+| :--- | :--- |
+| Prisma `migrate deploy` on separate `toktickit_lab4_verify_20261006_4ac723d` database | Passed: all 7 migrations applied from empty database |
+| `npm --prefix server run db:seed` twice; database row counts after each run | Passed: User/Ticket/Action Taken stayed `10/8/7` |
+| `npm --prefix server test` on that database | Passed: 17 files, 60 tests |
+| `npm --prefix server run build` | Passed |
+| `npm --prefix client test` | Passed: 9 files, 20 tests |
+| `npm --prefix client run build` | Passed |
+| Reseed, then `npm run test:e2e` on that database | Passed: 7 Chromium journeys (4 Lab 3, 3 Lab 4) |
+
+The test database was created separately from the regular `toktickit` database. The database-backed server and browser commands initially encountered sandbox `spawn EPERM` and passed when rerun with execution permission; those failed starts did not execute tests. The browser run printed non-failing React/Vite shorthand-style warnings. The existing 12 screenshots are from the feature-branch run above and were not recaptured on this staging commit.
+
+Migration from a representative Lab 3 database snapshot, manual keyboard/focus review, PR approval, and verification after merging into `main` are **pending**. Record those results when performed; do not treat the feature-branch or staging results as proof of a later `main` commit.
+
+Follow-up verification on the focus-fix code later committed as `3ec883c` (2026-10-06):
+
+| Command / check | Observed result |
+| :--- | :--- |
+| Apply the first four migration SQL files to separate `toktickit_lab4_legacy_verify_20261006_4ac723d`; insert synthetic Lab 3 rows; apply the three Lab 4 migration SQL files | Passed. User/Ticket/Attachment/PublicComment/InternalNote counts stayed `2/2/1/1/1`. Requester/owner links, URGENT priority, WAITING_FOR_REQUESTER status, requester indication, unassigned Ticket, and zero-action legacy Tickets were preserved. This checks SQL data preservation, not Prisma migration metadata or a real Lab 3 snapshot. |
+| `e2e/lab-04/keyboard-focus.spec.ts` | Initially failed: opening the Action form and completion panel did not move focus; saving an Action also lost focus when the parent detail view unmounted during refresh. Passed after focus management and an in-place parent refresh were added. Open/Cancel/Save/status transitions now pass focus assertions. |
+| `npm --prefix client test`; `npm --prefix client run build` | Passed: 9 files / 20 tests; build passed |
+| Reseed disposable database; `npm run test:e2e` | Passed: 8 Chromium journeys, including the new keyboard-focus regression |
+
+The connected Windows/browser UI tools were unavailable in this environment, so a manual visual focus review was not performed. A real pre-Lab-4 database snapshot is also unavailable; the populated Lab 3 migration check above used synthetic fixture rows.
