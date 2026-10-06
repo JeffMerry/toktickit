@@ -41,18 +41,20 @@ toktickit/
 │   └── vite.config.ts
 ├── server/                     # Backend Express Application
 │   ├── prisma/                 # Prisma schema, migrations, & idempotent seed script
-│   │   ├── schema.prisma       # User, Session, Category, RelatedSystem, Ticket, Attachment, PublicComment, InternalNote
-│   │   └── seed.ts             # Local-only users, categories, systems, Tickets, Comments, and Notes
+│   │   ├── schema.prisma       # Users, Tickets, Actions Taken, audit events, and related models
+│   │   └── seed.ts             # Local-only users, Tickets, Actions Taken, and reference data
 │   ├── src/                    # REST APIs, authentication, workflow rules, and utilities
 │   ├── tests/                  # Unit tests and API Integration tests
 │   └── package.json
 ├── e2e/                        # End-to-End Test Suites (Playwright)
 │   ├── lab-02/                 # Lab 2 workflow and screenshot capture specs
 │   ├── lab-03/                 # Authenticated Requester, IT Staff, and Admin journeys
-│   └── evidence/               # Lab 3 screenshot capture spec
+│   ├── lab-04/                 # Actions Taken and dashboard browser journeys
+│   └── evidence/               # Lab 3 and Lab 4 screenshot capture specs
 ├── artifacts/                  # Visual Inspection Deliverables
 │   ├── lab-02/screenshots/     # Lab 2 UI screenshots
-│   └── lab-03/screenshots/     # Lab 3 desktop, tablet, and mobile screenshots
+│   ├── lab-03/screenshots/     # Lab 3 desktop, tablet, and mobile screenshots
+│   └── lab-04/screenshots/     # Lab 4 role-based dashboard and Action screenshots
 ├── docs/
 │   ├── lab-01/                 # Lab 1 Evidence & Documentation
 │   ├── lab-02/                 # Lab 2 Sprint Engineering Contracts & Deliverables
@@ -62,7 +64,8 @@ toktickit/
 │   │   ├── tests.md            # Traceability Matrix & Test Evidence
 │   │   ├── reviewer.md         # Peer Review & Verification Guide
 │   │   └── ai-use.md           # AI Collaboration & Prompt Disclosure
-│   └── lab-03/                 # Lab 3 contract, tests, reviewer record, AI use, release evidence
+│   ├── lab-03/                 # Lab 3 contract, tests, reviewer record, AI use, release evidence
+│   └── lab-04/                 # Lab 4 contract, test results, review, AI use, release evidence
 └── README.md
 ```
 
@@ -119,6 +122,26 @@ The Requester “problem appears resolved” action, migration-specific regressi
 
 ---
 
+## 🌟 Key Features Delivered in Lab 4
+
+1. **Actions Taken and audit history:**
+   - IT Staff and Administrators can record, assign, edit, start, complete, or cancel operational Actions Taken on a Ticket. Completion requires a Result; required follow-up includes a note.
+   - Requesters can read Actions Taken on their own Tickets but cannot manage them. Session-derived actors, version checks, and audit events protect the operational record.
+
+2. **Final Ticket workflow and resolution gate:**
+   - The server enforces permitted status transitions and confirmation for final-state changes. Resolving requires an owner, completed work with a non-empty Result, and no unfinished required follow-up.
+   - A Requester's “problem appears resolved” indication is advisory and does not change the formal Ticket status; stale updates are rejected.
+
+3. **Role-based dashboards:**
+   - Requesters see metrics and recent Tickets scoped to their authenticated account. IT Staff and Administrators see operational counts and prioritized work.
+   - Dashboard cards and Ticket items drill down to the matching My Tickets list, Staff Queue, or Ticket Detail. Empty, loading, and retry states are provided.
+
+4. **Regression and responsive evidence:**
+   - Retained Lab 3 and new Lab 4 browser journeys cover authentication, Ticket operations, Actions Taken, resolution, and dashboards.
+   - Feature-branch verification passed 60 server tests, 20 client tests, and 7 Chromium E2E journeys; 12 screenshots cover 1440px, 768px, and 320px layouts. See the [test record](docs/lab-04/tests.md) and [release evidence](docs/lab-04/release-evidence.md). These results do not replace final verification on the integrated release branch.
+
+---
+
 ## 🛠️ Getting Started
 
 ### **Prerequisites**
@@ -150,7 +173,7 @@ npm run db:seed
 npm run dev
 ```
 
-The Lab 3 seed contains local-only accounts and temporary passwords. Check the configured database before running it because seeded data is updated and E2E tests create additional local data.
+The seed contains local-only accounts, temporary passwords, Tickets, and Lab 4 Actions Taken fixtures. Check the configured database before running it because seeded data is updated and E2E tests create additional local data.
 
 ---
 
@@ -183,7 +206,7 @@ npm --prefix client run build
 npm --prefix client test
 ```
 
-### **3. Run Lab 3 End-to-End (E2E) Tests (Playwright)**
+### **3. Run Lab 3 and Lab 4 End-to-End (E2E) Tests (Playwright)**
 ```bash
 # From the repository root; confirm the intended local database first
 npm install
