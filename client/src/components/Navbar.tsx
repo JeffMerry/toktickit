@@ -1,19 +1,21 @@
 import React from 'react';
 import { useAuth, type UserRole } from '../context/AuthContext';
 
-export type NavigationView = 'my-tickets' | 'create-ticket' | 'ticket-detail' | 'staff-queue' | 'staff-ticket-detail' | 'user-management';
+export type NavigationView = 'requester-dashboard' | 'staff-dashboard' | 'my-tickets' | 'create-ticket' | 'ticket-detail' | 'staff-queue' | 'staff-ticket-detail' | 'user-management';
 
 type NavigationItem = { view: NavigationView; label: string };
 
 export function navigationForRole(role: UserRole): NavigationItem[] {
   if (role === 'REQUESTER') {
     return [
+      { view: 'requester-dashboard', label: 'Dashboard' },
       { view: 'my-tickets', label: 'My Tickets' },
       { view: 'create-ticket', label: 'Create Ticket' },
     ];
   }
-  if (role === 'IT_STAFF') return [{ view: 'staff-queue', label: 'Ticket Queue' }];
+  if (role === 'IT_STAFF') return [{ view: 'staff-dashboard', label: 'Dashboard' }, { view: 'staff-queue', label: 'Ticket Queue' }];
   return [
+    { view: 'staff-dashboard', label: 'Dashboard' },
     { view: 'staff-queue', label: 'Ticket Queue' },
     { view: 'user-management', label: 'User Management' },
   ];
