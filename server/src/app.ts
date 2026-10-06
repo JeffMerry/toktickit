@@ -397,7 +397,7 @@ app.get('/api/dashboard/requester', requireAuthentication, requireRequester, asy
       prisma.ticket.count({ where: { requesterId, updatedAt: { gte: since } } }),
       prisma.ticket.count({ where: { requesterId, currentStatus: 'RESOLVED', updatedAt: { gte: since } } }),
       prisma.ticket.findMany({ where: { requesterId }, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: 5, select: dashboardTicketSelect }),
-      prisma.ticket.findMany({ where: { requesterId, currentStatus: 'RESOLVED' }, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: 5, select: dashboardTicketSelect }),
+      prisma.ticket.findMany({ where: { requesterId, currentStatus: 'RESOLVED', updatedAt: { gte: since } }, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: 5, select: dashboardTicketSelect }),
     ]);
     return res.json({
       metrics: {

@@ -10,6 +10,7 @@ const ids: number[] = [];
 const users: number[] = [];
 let ownCookie = '';
 let otherCookie = '';
+let emptyCookie = '';
 let staffCookie = '';
 let adminCookie = '';
 let requesterId = 0;
@@ -36,9 +37,10 @@ beforeAll(async () => {
   };
   requesterId = await makeUser('REQUESTER', 'dashboard-owner');
   const otherId = await makeUser('REQUESTER', 'dashboard-other');
+  const emptyId = await makeUser('REQUESTER', 'dashboard-empty');
   staffId = await makeUser('IT_STAFF', 'dashboard-staff');
   const adminId = await makeUser('ADMINISTRATOR', 'dashboard-admin');
-  [ownCookie, otherCookie, staffCookie, adminCookie] = await Promise.all([cookie(requesterId), cookie(otherId), cookie(staffId), cookie(adminId)]);
+  [ownCookie, otherCookie, emptyCookie, staffCookie, adminCookie] = await Promise.all([cookie(requesterId), cookie(otherId), cookie(emptyId), cookie(staffId), cookie(adminId)]);
 
   const now = Date.now();
   for (const [index, owner, status, priority, age] of [
@@ -47,6 +49,8 @@ beforeAll(async () => {
     [3, requesterId, 'RESOLVED', 'LOW', 300],
     [4, requesterId, 'CLOSED', 'MEDIUM', 31 * 24 * 60 * 60 * 1000],
     [5, otherId, 'OPEN', 'URGENT', 50],
+    [6, requesterId, 'NEW', 'MEDIUM', 700],
+    [7, requesterId, 'REOPENED', 'HIGH', 800],
   ] as const) {
     const ticket = await prisma.ticket.create({ data: {
       ticketNumber: `DASH-${suffix}-${index}`, requesterId: owner, ownerId: index === 2 ? staffId : null,
@@ -68,16 +72,19 @@ afterAll(async () => {
 describe('Lab 4 dashboard API', () => {
   it('scopes requester metrics and bounded ordered summaries to the session owner', async () => {
     const response = await request(app).get('/api/dashboard/requester').set('Cookie', ownCookie).expect(200);
-    expect(response.body.metrics.openTickets.value).toBe(2);
+    expect(response.body.metrics.openTickets.value).toBe(4);
     expect(response.body.metrics.waitingForRequester.value).toBe(1);
     expect(response.body.metrics.recentlyResolved.value).toBe(1);
-    expect(response.body.attentionTickets.map((ticket: { id: number }) => ticket.id)).toEqual([ids[1], ids[2], ids[0], ids[3]]);
+    expect(response.body.attentionTickets.map((ticket: { id: number }) => ticket.id)).toEqual([ids[1], ids[2], ids[0], ids[5], ids[6]]);
     expect(response.body.recentResolvedTickets.map((ticket: { id: number }) => ticket.id)).toEqual([ids[2]]);
     expect(JSON.stringify(response.body)).not.toContain(`DASH-${suffix}-5`);
     expect(response.body.attentionTickets[0]).not.toHaveProperty('description');
     const empty = await request(app).get('/api/dashboard/requester').set('Cookie', otherCookie).expect(200);
     expect(empty.body.metrics.openTickets.value).toBe(1);
     expect(JSON.stringify(empty.body)).not.toContain(`DASH-${suffix}-1`);
+    const zero = await request(app).get('/api/dashboard/requester').set('Cookie', emptyCookie).expect(200);
+    expect(Object.values(zero.body.metrics).map((item: any) => item.value)).toEqual([0, 0, 0, 0]);
+    expect(zero.body.attentionTickets).toEqual([]);
     await request(app).get('/api/dashboard/requester').set('Cookie', ownCookie).query({ requesterId: otherCookie }).expect(400);
   });
 
