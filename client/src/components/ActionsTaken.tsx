@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type RefObject } from 'react';
 import { apiFetch } from '../lib/api';
 
 export type ActionPerson = { id: number; name: string; role?: string };
@@ -49,6 +49,36 @@ export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticke
   const [formError, setFormError] = useState<string | null>(null);
   const [completion, setCompletion] = useState<ActionTaken | null>(null);
   const [completionResult, setCompletionResult] = useState('');
+  const addActionButtonRef = useRef<HTMLButtonElement>(null);
+  const firstFormFieldRef = useRef<HTMLInputElement>(null);
+  const formReturnFocusRef = useRef<HTMLElement | null>(null);
+  const shouldRestoreFormFocusRef = useRef(false);
+  const completionResultRef = useRef<HTMLTextAreaElement>(null);
+  const completionReturnFocusRef = useRef<HTMLElement | null>(null);
+  const shouldRestoreActionFocusRef = useRef(false);
+
+  useEffect(() => {
+    if (showForm) firstFormFieldRef.current?.focus();
+  }, [showForm, editing?.id]);
+
+  useEffect(() => {
+    if (completion) completionResultRef.current?.focus();
+  }, [completion?.id]);
+
+  useEffect(() => {
+    if (!showForm && !isSubmitting && shouldRestoreFormFocusRef.current) {
+      shouldRestoreFormFocusRef.current = false;
+      const trigger = formReturnFocusRef.current;
+      if (trigger?.isConnected) trigger.focus();
+    }
+  }, [showForm, isSubmitting]);
+
+  useEffect(() => {
+    if (!isSubmitting && !isLoading && shouldRestoreActionFocusRef.current) {
+      shouldRestoreActionFocusRef.current = false;
+      addActionButtonRef.current?.focus();
+    }
+  }, [isSubmitting, isLoading, actions]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -90,6 +120,7 @@ export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticke
 
   const closeForm = () => {
     if (isSubmitting) return;
+    shouldRestoreFormFocusRef.current = true;
     setShowForm(false);
     setEditing(null);
     setForm(emptyForm());
@@ -109,6 +140,8 @@ export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticke
   };
 
   const openCreate = () => {
+    shouldRestoreFormFocusRef.current = false;
+    formReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setEditing(null);
     setForm(emptyForm());
     setFormError(null);
@@ -116,6 +149,8 @@ export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticke
   };
 
   const openEdit = (action: ActionTaken) => {
+    shouldRestoreFormFocusRef.current = false;
+    formReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setEditing(action);
     setForm(formFromAction(action));
     setFormError(null);
@@ -143,6 +178,7 @@ export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticke
       const response = await apiFetch(path, { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || (response.status === 409 ? 'This Action Taken has changed. Reload the latest action before retrying.' : 'Unable to save the Action Taken.'));
+      shouldRestoreFormFocusRef.current = true;
       setShowForm(false);
       setEditing(null);
       setForm(emptyForm());
@@ -166,6 +202,7 @@ export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticke
       setCompletionResult('');
       await load();
       await onChanged?.();
+      shouldRestoreActionFocusRef.current = true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to update the Action Taken.');
     } finally {
@@ -180,7 +217,7 @@ export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticke
           <h2 id="actions-taken-title" style={styles.title}>Actions Taken</h2>
           <p style={styles.subtitle}>Recorded work and its follow-up details for this ticket.</p>
         </div>
-        {canManage ? <button type="button" onClick={openCreate} disabled={isSubmitting} style={styles.primaryButton}>Add Action Taken</button> : null}
+        {canManage ? <button ref={addActionButtonRef} type="button" onClick={openCreate} disabled={isSubmitting} style={styles.primaryButton}>Add Action Taken</button> : null}
       </div>
 
       {isLoading ? <p style={styles.state}>Loading Actions Taken...</p> : null}
@@ -191,17 +228,17 @@ export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticke
         </div>
       ) : null}
       {!isLoading && !error && actions.length === 0 ? <p style={styles.empty}>No actions have been recorded for this ticket.</p> : null}
-      {showForm ? <ActionFormPanel form={form} assignees={assignees} assigneeError={assigneeError} editing={editing} isSubmitting={isSubmitting} error={formError} onChange={setForm} onCancel={closeForm} onReload={() => void reloadEditing()} onRetryAssignees={() => void loadAssignees()} onSubmit={submitForm} /> : null}
+      {showForm ? <ActionFormPanel form={form} assignees={assignees} assigneeError={assigneeError} editing={editing} isSubmitting={isSubmitting} error={formError} firstFieldRef={firstFormFieldRef} onChange={setForm} onCancel={closeForm} onReload={() => void reloadEditing()} onRetryAssignees={() => void loadAssignees()} onSubmit={submitForm} /> : null}
       {!isLoading && !error && actions.length > 0 ? (
         <div style={styles.list}>
-          {actions.map((action) => <ActionCard key={action.id} action={action} canManage={canManage} isSubmitting={isSubmitting} isCompleting={completion?.id === action.id} completionResult={completionResult} onEdit={() => openEdit(action)} onStart={() => void transition(action, 'IN_PROGRESS')} onCancel={() => void transition(action, 'CANCELLED')} onShowCompletion={() => { setCompletion(action); setCompletionResult(action.result || ''); }} onCompletionResultChange={setCompletionResult} onConfirmCompletion={() => void transition(action, 'COMPLETED', completionResult.trim())} onDismissCompletion={() => { setCompletion(null); setCompletionResult(''); }} />)}
+          {actions.map((action) => <ActionCard key={action.id} action={action} canManage={canManage} isSubmitting={isSubmitting} isCompleting={completion?.id === action.id} completionResult={completionResult} completionResultRef={completionResultRef} onEdit={() => openEdit(action)} onStart={() => void transition(action, 'IN_PROGRESS')} onCancel={() => void transition(action, 'CANCELLED')} onShowCompletion={() => { completionReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setCompletion(action); setCompletionResult(action.result || ''); }} onCompletionResultChange={setCompletionResult} onConfirmCompletion={() => void transition(action, 'COMPLETED', completionResult.trim())} onDismissCompletion={() => { const trigger = completionReturnFocusRef.current; setCompletion(null); setCompletionResult(''); requestAnimationFrame(() => { if (trigger?.isConnected) trigger.focus(); }); }} />)}
         </div>
       ) : null}
     </section>
   );
 }
 
-function ActionCard({ action, canManage, isSubmitting, isCompleting, completionResult, onEdit, onStart, onCancel, onShowCompletion, onCompletionResultChange, onConfirmCompletion, onDismissCompletion }: { action: ActionTaken; canManage: boolean; isSubmitting: boolean; isCompleting: boolean; completionResult: string; onEdit: () => void; onStart: () => void; onCancel: () => void; onShowCompletion: () => void; onCompletionResultChange: (value: string) => void; onConfirmCompletion: () => void; onDismissCompletion: () => void }) {
+function ActionCard({ action, canManage, isSubmitting, isCompleting, completionResult, completionResultRef, onEdit, onStart, onCancel, onShowCompletion, onCompletionResultChange, onConfirmCompletion, onDismissCompletion }: { action: ActionTaken; canManage: boolean; isSubmitting: boolean; isCompleting: boolean; completionResult: string; completionResultRef: RefObject<HTMLTextAreaElement | null>; onEdit: () => void; onStart: () => void; onCancel: () => void; onShowCompletion: () => void; onCompletionResultChange: (value: string) => void; onConfirmCompletion: () => void; onDismissCompletion: () => void }) {
   const formattedTime = new Date(action.actionOccurredAt).toLocaleString();
   const wasEdited = action.updatedAt !== action.createdAt;
   return (
@@ -221,28 +258,28 @@ function ActionCard({ action, canManage, isSubmitting, isCompleting, completionR
       {action.followUpNote ? <Detail label="Follow-up note" value={action.followUpNote} /> : null}
       {action.attachmentNotes ? <Detail label="Attachment notes" value={action.attachmentNotes} /> : null}
       <p style={styles.context}>Created by {personLabel(action.createdBy, 'Unknown user')}{wasEdited ? ' · Edited after creation' : ''}</p>
-      {canManage ? <ActionControls action={action} isSubmitting={isSubmitting} isCompleting={isCompleting} completionResult={completionResult} onEdit={onEdit} onStart={onStart} onCancel={onCancel} onShowCompletion={onShowCompletion} onCompletionResultChange={onCompletionResultChange} onConfirmCompletion={onConfirmCompletion} onDismissCompletion={onDismissCompletion} /> : null}
+      {canManage ? <ActionControls action={action} isSubmitting={isSubmitting} isCompleting={isCompleting} completionResult={completionResult} completionResultRef={completionResultRef} onEdit={onEdit} onStart={onStart} onCancel={onCancel} onShowCompletion={onShowCompletion} onCompletionResultChange={onCompletionResultChange} onConfirmCompletion={onConfirmCompletion} onDismissCompletion={onDismissCompletion} /> : null}
     </article>
   );
 }
 
-function ActionControls({ action, isSubmitting, isCompleting, completionResult, onEdit, onStart, onCancel, onShowCompletion, onCompletionResultChange, onConfirmCompletion, onDismissCompletion }: { action: ActionTaken; isSubmitting: boolean; isCompleting: boolean; completionResult: string; onEdit: () => void; onStart: () => void; onCancel: () => void; onShowCompletion: () => void; onCompletionResultChange: (value: string) => void; onConfirmCompletion: () => void; onDismissCompletion: () => void }) {
+function ActionControls({ action, isSubmitting, isCompleting, completionResult, completionResultRef, onEdit, onStart, onCancel, onShowCompletion, onCompletionResultChange, onConfirmCompletion, onDismissCompletion }: { action: ActionTaken; isSubmitting: boolean; isCompleting: boolean; completionResult: string; completionResultRef: RefObject<HTMLTextAreaElement | null>; onEdit: () => void; onStart: () => void; onCancel: () => void; onShowCompletion: () => void; onCompletionResultChange: (value: string) => void; onConfirmCompletion: () => void; onDismissCompletion: () => void }) {
   const terminal = action.status === 'COMPLETED' || action.status === 'CANCELLED';
   return <div style={styles.controls}>
     {action.status !== 'CANCELLED' ? <button type="button" onClick={onEdit} disabled={isSubmitting} style={styles.secondaryButton}>Edit Action</button> : null}
     {action.status === 'PLANNED' ? <button type="button" onClick={onStart} disabled={isSubmitting} style={styles.secondaryButton}>Start</button> : null}
     {!terminal ? <button type="button" onClick={onShowCompletion} disabled={isSubmitting} style={styles.primaryButton}>Complete</button> : null}
     {!terminal ? <button type="button" onClick={onCancel} disabled={isSubmitting} style={styles.cancelButton}>Cancel Action</button> : null}
-    {isCompleting ? <div style={styles.completionPanel}><label style={styles.label}>Completion result<textarea value={completionResult} onChange={(event) => onCompletionResultChange(event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label><div style={styles.buttonRow}><button type="button" onClick={onConfirmCompletion} disabled={isSubmitting || !completionResult.trim()} style={styles.primaryButton}>Confirm completion</button><button type="button" onClick={onDismissCompletion} disabled={isSubmitting} style={styles.secondaryButton}>Cancel</button></div></div> : null}
+    {isCompleting ? <div style={styles.completionPanel}><label style={styles.label}>Completion result<textarea ref={completionResultRef} value={completionResult} onChange={(event) => onCompletionResultChange(event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label><div style={styles.buttonRow}><button type="button" onClick={onConfirmCompletion} disabled={isSubmitting || !completionResult.trim()} style={styles.primaryButton}>Confirm completion</button><button type="button" onClick={onDismissCompletion} disabled={isSubmitting} style={styles.secondaryButton}>Cancel</button></div></div> : null}
   </div>;
 }
 
-function ActionFormPanel({ form, assignees, assigneeError, editing, isSubmitting, error, onChange, onCancel, onReload, onRetryAssignees, onSubmit }: { form: ActionForm; assignees: Assignee[]; assigneeError: string | null; editing: ActionTaken | null; isSubmitting: boolean; error: string | null; onChange: (form: ActionForm) => void; onCancel: () => void; onReload: () => void; onRetryAssignees: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function ActionFormPanel({ form, assignees, assigneeError, editing, isSubmitting, error, firstFieldRef, onChange, onCancel, onReload, onRetryAssignees, onSubmit }: { form: ActionForm; assignees: Assignee[]; assigneeError: string | null; editing: ActionTaken | null; isSubmitting: boolean; error: string | null; firstFieldRef: RefObject<HTMLInputElement | null>; onChange: (form: ActionForm) => void; onCancel: () => void; onReload: () => void; onRetryAssignees: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const update = <K extends keyof ActionForm>(key: K, value: ActionForm[K]) => onChange({ ...form, [key]: value });
   return <form onSubmit={onSubmit} style={styles.form} aria-label={editing ? 'Edit Action Taken' : 'Add Action Taken'}>
     <h3 style={styles.formTitle}>{editing ? 'Edit Action Taken' : 'Add Action Taken'}</h3>
     {error ? <div role="alert" style={styles.error}><p style={{ margin: 0 }}>{error}</p><button type="button" onClick={onReload} style={styles.retry}>Reload latest action</button></div> : null}
-    <label style={styles.label}>Action date and time<input required type="datetime-local" value={form.actionOccurredAt} onChange={(event) => update('actionOccurredAt', event.target.value)} disabled={isSubmitting} style={styles.input} /></label>
+    <label style={styles.label}>Action date and time<input ref={firstFieldRef} required type="datetime-local" value={form.actionOccurredAt} onChange={(event) => update('actionOccurredAt', event.target.value)} disabled={isSubmitting} style={styles.input} /></label>
     <label style={styles.label}>Action description<textarea required value={form.description} onChange={(event) => update('description', event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label>
     <label style={styles.label}>Result <span style={styles.optional}>(required when completing)</span><textarea value={form.result} onChange={(event) => update('result', event.target.value)} maxLength={2000} disabled={isSubmitting} style={styles.textarea} /></label>
     <label style={styles.label}>Assignee<select aria-label="Assignee" value={form.assigneeId} onChange={(event) => update('assigneeId', event.target.value)} disabled={isSubmitting || editing?.status === 'COMPLETED'} style={styles.input}><option value="">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{personLabel(assignee, '')}</option>)}</select>{editing?.status === 'COMPLETED' ? <span style={styles.optional}>Assignee is read-only after completion.</span> : null}</label>

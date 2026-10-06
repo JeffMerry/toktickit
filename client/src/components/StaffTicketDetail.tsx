@@ -32,8 +32,8 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
   const [publicComment, setPublicComment] = useState('');
   const [internalNote, setInternalNote] = useState('');
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     setError(null);
     try {
       const response = await apiFetch(`/api/staff/tickets/${ticketId}`);
@@ -45,7 +45,7 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load ticket detail.');
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, [ticketId]);
 
@@ -110,7 +110,7 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
           <form onSubmit={handleStatus} style={styles.statusForm}><label style={styles.label}>Next status<select value={status} onChange={(event) => { setStatus(event.target.value); setConfirmed(false); }} disabled={isUpdating} style={styles.select}><option value="">Select a transition</option>{ticket.allowedNextStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>{status === 'RESOLVED' && <p style={styles.hint}>Resolving requires a completed Action Taken with a result and no unfinished required follow-ups.</p>}{confirmationRequired && <label style={styles.confirm}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> I confirm this status change.</label>}<button type="submit" disabled={!status || isUpdating} style={styles.button}>Update status</button></form>
         </section>
       </div>
-      <ActionsTaken ticketId={ticketId} canManage onChanged={load} />
+      <ActionsTaken ticketId={ticketId} canManage onChanged={() => load(false)} />
       <div style={styles.grid}>
         <section style={styles.card}><h2 style={styles.heading}>Attachments</h2>{ticket.attachments.length ? ticket.attachments.map((attachment) => <p key={attachment.id}>{attachment.fileName}{attachment.isRemoved ? ` (removed: ${attachment.removalReason || 'no reason'})` : ''}</p>) : <p>No attachments.</p>}</section>
         <section style={styles.card}>
