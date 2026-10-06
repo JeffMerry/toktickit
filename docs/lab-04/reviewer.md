@@ -1,5 +1,7 @@
 # Lab 4 Reviewer Record
 
+> Updated through PR #53 (merged on 2026-10-06). Final `lab4-staging` → `main` review is still pending.
+
 ## My Information
 
 | Field | Detail |
@@ -95,10 +97,11 @@
 | Field | Detail |
 |---|---|
 | **Related Issue** | [#47 — Lab 4 regression, accessibility, release evidence, and final integration](https://github.com/JeffMerry/toktickit/issues/47) |
-| **PR Link** | Pending — this branch has not been submitted for review. |
-| **Reviewer** | Pending |
-| **Review Comment / My Response** | Pending peer review. Local results and remaining gaps are recorded in [tests.md](tests.md) and [release-evidence.md](release-evidence.md). |
-| **Outcome** | Pending. Do not mark approved or merged before GitHub confirms it. |
+| **PR Link** | [PR #53](https://github.com/JeffMerry/toktickit/pull/53) |
+| **Reviewer** | Thanatip Nitinantakul ([@THN4](https://github.com/THN4)) |
+| **Review Comment** | Confirmed the Action form closes after save, Ticket details refresh after Action changes, the 320px Staff Detail layout does not overflow, and the documented server/client/browser/screenshot checks passed. Before final release, requested the Lab 3 database migration check, manual keyboard/focus review, and verification on the integrated `lab4-staging` branch. |
+| **My Response** | Thanked the reviewer and confirmed the PR could be merged. The three pre-release checks remain open; feature-branch results are recorded in [tests.md](tests.md) and [release-evidence.md](release-evidence.md). |
+| **Outcome** | Approved and merged into `lab4-staging` on 2026-10-06 (UTC). The final release checks above are not yet claimed as complete. |
 
 ---
 
@@ -117,23 +120,10 @@
 
 ---
 
-## Release Pull Request
-
-### `lab4-staging` → `main`
-
-| Field | Detail |
-|---|---|
-| **PR Link** | Pending |
-| **Reviewed source commit** | Pending |
-| **Merged `main` commit** | Pending |
-| **Reviewer / Comment** | Pending |
-| **Test Evidence** | Feature-branch results are in [tests.md](tests.md); fresh `lab4-staging` and `main` verification are not yet recorded. |
-| **Outcome** | Pending approval and merge. |
 
 ## Final Review Evidence Checklist
 
-- [x] Completed Lab 4 feature PRs #48–#52 and their reviewer feedback are linked.
+- [x] Completed Lab 4 feature PRs #48–#53 and their reviewer feedback are linked.
 - [x] Reviewer identity, requested changes, responses, and merge outcomes are recorded.
 - [x] Partner PR reviews #55–#60 are recorded separately from my repository.
-- [ ] Final-verification PR for `feature/24-lab4-final-verification` is reviewed and merged.
-- [ ] Final `lab4-staging` → `main` PR, tested SHA, and outcome are recorded.
+- [x] Final-verification PR for `feature/24-lab4-final-verification` is reviewed and merged.
