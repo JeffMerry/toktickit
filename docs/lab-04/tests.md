@@ -43,18 +43,18 @@ The final E2E command is run after an explicit seed because browser flows change
 | API-WF-02 | API | FR-07, BR-11 to BR-13, AC-05 | Resolve without owner, confirmation, or qualifying Action Taken | `422`; Ticket status is unchanged | `server/tests/api/lab4TicketWorkflow.api.test.ts` | Planned |
 | API-WF-03 | API | FR-08, AC-06 | Requester posts resolution indication repeatedly | Timestamp is recorded idempotently; formal status is unchanged | `server/tests/api/lab4TicketWorkflow.api.test.ts` | Planned |
 | API-WF-04 | API | BR-15, AC-04 | Concurrent status or Action update | One update succeeds; stale request receives `409` | `server/tests/api/lab4TicketWorkflow.api.test.ts` | Planned |
-| API-DASH-01 | API | FR-10, BR-16, AC-07 | Requester dashboard with owned and foreign Tickets | Only owned counts/lists are returned | `server/tests/api/lab4RequesterDashboard.api.test.ts` | Planned |
-| API-DASH-02 | API | FR-11, BR-17 to BR-19, AC-08 | IT Staff dashboard metrics over known fixtures | Unassigned, owned, status, priority, urgent, and recent values match queries | `server/tests/api/lab4StaffDashboard.api.test.ts` | Planned |
-| API-DASH-03 | API | FR-10 to FR-12 | Wrong role calls dashboard route | `403`; no dashboard payload is leaked | `server/tests/api/lab4DashboardAuthorization.api.test.ts` | Planned |
-| API-DASH-04 | API | BR-17, AC-09 | No matching Tickets | Zero-valued metrics and empty arrays are returned | `server/tests/api/lab4StaffDashboard.api.test.ts` | Planned |
+| API-DASH-01 | API | FR-10, BR-18, AC-07 | Requester dashboard with owned and foreign Tickets | Only owned counts/lists are returned | `server/tests/api/lab4Dashboards.api.test.ts` | Passed locally, including top-five ordering |
+| API-DASH-02 | API | FR-11, BR-19 to BR-21, AC-08 | IT Staff dashboard metrics over known fixtures | Unassigned, owned, status, priority, urgent, and recent values match queries | `server/tests/api/lab4Dashboards.api.test.ts` | Passed locally against database counts |
+| API-DASH-03 | API | FR-10 to FR-12 | Wrong role calls dashboard route | `403`; no dashboard payload is leaked | `server/tests/api/lab4Dashboards.api.test.ts` | Passed locally |
+| API-DASH-04 | API | BR-19, AC-09 | No matching Tickets | Zero-valued metrics and empty arrays are returned | `server/tests/api/lab4Dashboards.api.test.ts` | Passed locally for empty Requester |
 | MIG-01 | Migration | Data Changes, AC-11 | Apply additive migration to representative legacy database | Existing Tickets, attachments, comments, notes, and users remain valid | `server/tests/api/lab4MigrationRegression.api.test.ts` | Planned |
 | MIG-02 | Migration | Seed decision | Run seed twice | Stable fixture keys; no duplicate Actions Taken or users | `server/tests/api/lab4MigrationRegression.api.test.ts` | Planned |
 | REG-01 | API | FR-15, AC-11 | Run retained Lab 3 requester, staff, admin, attachment, comment, and note tests | Existing behavior remains passing | Existing `server/tests/api/*.test.ts` | Planned |
 | UI-ACT-01 | UI | FR-01 to FR-05 | Render operational Action list/create/edit and Requester read-only mode | Correct fields, permissions, empty, and validation states | `client/src/components/ActionsTaken.test.tsx` | Planned |
 | UI-ACT-02 | UI | FR-16, AC-09 | Action API failure and stale conflict | Error/retry/reload feedback preserves draft where practical | `client/src/components/ActionsTaken.test.tsx` | Planned |
 | UI-WF-01 | UI | FR-09, AC-05 | Status controls for each role and resolution gate feedback | Only permitted options render; explanatory feedback appears | `client/src/components/TicketWorkflow.test.tsx` | Planned |
-| UI-REQ-DASH-01 | UI | FR-10, FR-13, AC-07 | Requester metrics, zero state, and drill-down | Owned cards and accessible destinations render | `client/src/components/RequesterDashboard.test.tsx` | Planned |
-| UI-STAFF-DASH-01 | UI | FR-11 to FR-14, AC-08 | Staff metrics, lists, empty state, and drill-down | Correct safe cards and queue destinations render | `client/src/components/StaffDashboard.test.tsx` | Planned |
+| UI-REQ-DASH-01 | UI | FR-10, FR-13, AC-07 | Requester metrics, zero state, and drill-down | Owned cards and accessible destinations render | `client/src/components/Dashboards.test.tsx` | Passed locally |
+| UI-STAFF-DASH-01 | UI | FR-11 to FR-14, AC-08 | Staff metrics, lists, empty state, and drill-down | Correct safe cards and queue destinations render | `client/src/components/Dashboards.test.tsx` | Passed locally, including retry |
 | UI-A11Y-01 | UI style | FR-17, AC-10 | Labels, keyboard focus, non-color cues, and modal/panel controls | Semantics and visible focus pass automated/manual checks | `client/src/components/lab4Accessibility.test.tsx` | Planned |
 | VIS-01 | Visual | FR-17, AC-10 | Desktop 1440 px, tablet 768 px, and mobile 320 px inspection | No clipping, overlap, or horizontal overflow | `e2e/evidence/capture-lab4-screenshots.spec.ts` | Planned |
 | PERF-01 | Smoke | FR-14 | Dashboard queries over seed-scale data | Endpoint responds without full Ticket collection or server error | `server/tests/api/lab4DashboardPerformance.api.test.ts` | Planned |
@@ -80,6 +80,19 @@ The final E2E command is run after an explicit seed because browser flows change
 | AC-11 Final regression | MIG-01, MIG-02, REG-01, E2E-04 |
 
 ## 5. Final Execution Record
+
+Dashboard feature branch local verification (2026-10-06, `feature/23-lab4-dashboards`):
+
+| Command | Observed result |
+| :--- | :--- |
+| `npm --prefix server run build` | Passed |
+| `server: node -r dotenv/config .\\node_modules\\vitest\\vitest.mjs run lab4Dashboards.api.test.ts` with `DOTENV_CONFIG_PATH=.env` | Passed: 3 dashboard API tests |
+| `server: node -r dotenv/config .\\node_modules\\vitest\\vitest.mjs run` with `DOTENV_CONFIG_PATH=.env` | Passed: 17 files, 60 tests |
+| `npm --prefix client run build` | Passed |
+| `npm --prefix client test -- Dashboards.test.tsx` | Passed: 2 Dashboard UI tests |
+| `npm --prefix client test` | Passed: 9 files, 20 tests |
+
+These results are from the feature branch. Browser E2E, responsive screenshots, and final `lab4-staging`/`main` verification remain to be recorded after integration.
 
 After final integration, record the exact branch/commit, date, commands, and observed outcome here. Do not mark tests as passing before they run.
 
