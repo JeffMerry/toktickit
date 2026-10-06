@@ -271,7 +271,7 @@ function statusStyle(status: ActionTaken['status']): CSSProperties {
 
 const styles: Record<string, CSSProperties> = {
   section: { marginTop: '16px', padding: '24px', border: '1px solid #E5E7EB', borderRadius: '12px', background: '#FFF' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '12px', marginBottom: '16px' },
+  header: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'start', gap: '12px', marginBottom: '16px' },
   title: { margin: 0, color: '#006B3C', fontSize: '1.2rem' },
   subtitle: { margin: '4px 0 0', color: '#4B5563', fontSize: '.9rem' },
   state: { color: '#4B5563', margin: 0 },

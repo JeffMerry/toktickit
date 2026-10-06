@@ -51,9 +51,7 @@ export async function signInWithInitialPassword(
   page: Page,
   account: { email: string; replacementPassword: string },
 ) {
-  await openLogin(page);
-  await signIn(page, account.email, temporaryPassword);
-  await changeTemporaryPassword(page, account.replacementPassword);
+  await signInSeededAccount(page, account);
 }
 
 /** Allows Lab 4 evidence to be rerun after the initial password was changed. */
