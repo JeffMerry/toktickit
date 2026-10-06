@@ -1,6 +1,6 @@
 # TokTickIT - IT Service Desk Application
 
-> **Lab 1, Lab 2 & Lab 3 Submission** — Full-stack IT Service Desk Web Application built with React, Node.js, Express, Prisma ORM, PostgreSQL, and Playwright E2E Testing following the **Zen Green Theme** Design System.
+> **Lab 1–4 Submission** — Full-stack IT Service Desk Web Application built with React, Node.js, Express, Prisma ORM, PostgreSQL, and Playwright E2E Testing following the **Zen Green Theme** Design System.
 
 ---
 
@@ -191,11 +191,18 @@ npm --prefix server run db:seed
 npm run test:e2e
 ```
 
-The Lab 3 E2E suite starts or reuses the local server and client. It changes seeded passwords and creates Ticket/User data. Screenshot evidence can be refreshed after reseeding with `npm run capture:lab3-evidence`.
+The E2E command now runs the retained Lab 3 journeys and Lab 4 journeys. It starts or reuses the local server and client, changes seeded passwords, and creates Ticket/User data. Run it only against an intended disposable database. Lab 4-only journeys use `npm run test:e2e:lab4`; Lab 4 screenshots use `npm run capture:lab4-evidence` and are saved under `artifacts/lab-04/screenshots/`. The earlier Lab 3 evidence script remains available as `npm run capture:lab3-evidence`.
 
 ---
 
 ## 📚 Documentation & Deliverables
+
+### **Lab 4 Documentation (`docs/lab-04/`)**
+- [Specification](docs/lab-04/specification.md), [UI specification](docs/lab-04/ui-spec.md), and [API specification](docs/lab-04/api-spec.md)
+- [Test matrix and observed verification](docs/lab-04/tests.md)
+- [Release evidence and screenshot index](docs/lab-04/release-evidence.md)
+- [Peer-review record](docs/lab-04/reviewer.md) and [AI-use record](docs/lab-04/ai-use.md)
+- [Responsive screenshots](artifacts/lab-04/screenshots/) for Requester and IT Staff dashboards and Actions Taken views
 
 ### **Lab 3 Documentation (`docs/lab-03/`)**
 - 📋 **Software Requirements Specification:** [docs/lab-03/specification.md](docs/lab-03/specification.md)

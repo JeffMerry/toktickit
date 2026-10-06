@@ -49,3 +49,13 @@ The test plan includes dedicated migration and Lab 1-3 regression entries instea
 ## My Reflection
 
 AI helped transform a long assignment sheet into a reviewable backlog and traceable contract quickly. I checked decisions against the handout, kept the scope limited to Lab 4, and used small commits so a peer can review each document change. AI suggestions are treated as a draft: the team must review the final transition matrix, endpoint names, and tests before using them as implementation authority.
+
+## Final verification collaboration (2026-10-06)
+
+### Actual prompt
+
+> `ตอนนี้อยู่ที่ feature/24-lab4-final-verification เริ่มทำได้เลย`
+
+Codex added browser journeys for the Requester/IT Staff Action Taken workflow and role-based dashboards, updated the retained Lab 3 journeys for the new dashboard landing, and captured 12 responsive screenshots. Running the tests exposed a post-save Action form issue, a stale Ticket timestamp after Action mutations, and a 320 px Staff detail overflow; those were fixed and retested. A parallel server run also exposed shared-fixture interference, so the server suite now runs one worker. All database-changing checks used a disposable `toktickit_lab4_verification` database rather than the regular local database.
+
+The observed command results and remaining gaps are recorded in [tests.md](tests.md). This entry does not claim that the final branch has been reviewed, merged, or tested on `main`.
