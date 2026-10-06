@@ -12,7 +12,7 @@ Feature-branch verification was completed on 2026-10-06 for `feature/24-lab4-fin
 
 On the integrated staging commit, a separate empty PostgreSQL database accepted all 7 migrations; two seed runs kept User/Ticket/Action Taken counts at `10/8/7`. Server tests passed 17 files / 60 tests, client tests passed 9 files / 20 tests, both production builds passed, and the reseeded Chromium E2E suite passed 7/7 journeys. The screenshots above were captured on the feature branch and were not recaptured for this staging run.
 
-On the focus-fix code later committed as `3ec883c`, the Lab 4 SQL migrations preserved synthetic populated Lab 3 records and relationships. A newly added Chromium keyboard-focus check exposed missing focus movement in the Actions Taken panels and focus loss after save caused by a full parent-detail refresh. After focus management and an in-place refresh fix, client tests and build passed, and the full browser suite passed 8/8 journeys, including open/Cancel/Save/status focus checks. This is automated focus evidence; a manual visual audit and migration of a real Lab 3 database snapshot remain pending.
+On the focus-fix code later committed as `3ec883c`, the Lab 4 SQL migrations preserved synthetic populated Lab 3 records and relationships. A newly added Chromium keyboard-focus check exposed missing focus movement in the Actions Taken panels and focus loss after save caused by a full parent-detail refresh. After focus management and an in-place refresh fix, client tests and build passed, and the full browser suite passed 8/8 journeys, including open/Cancel/Save/status focus checks. The developer reported that a manual local-browser keyboard/focus review of Dashboard and Actions Taken passed on 2026-10-06; no screenshot was supplied. Migration of a real Lab 3 database snapshot remains pending.
 
 See [tests.md](tests.md) for commands, traceability, and untested portions.
 
@@ -32,6 +32,6 @@ The screenshots use seeded demonstration accounts only. They are recreated with 
 ## Before final release
 
 1. If a real pre-Lab-4 database snapshot is available, test migration on a recoverable copy; the synthetic fixture check does not prove every historical data shape.
-2. Review visible keyboard focus manually and the remaining browser scenarios called out as partial in the test matrix.
+2. Review the remaining browser scenarios called out as partial in the test matrix; the developer-reported manual keyboard/focus check is recorded above.
 3. Open the final `lab4-staging` to `main` PR, obtain approval, and merge after the required checks pass.
 4. After merging, record verification on the actual `main` commit in [tests.md](tests.md).

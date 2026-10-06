@@ -133,4 +133,5 @@ When `RESOLVED` is unavailable because no qualifying Action Taken exists, the UI
 - [ ] Actions Taken distinguishes editable operational controls from Requester read-only content.
 - [ ] All loading, empty, error, and retry states are readable.
 - [ ] Desktop, tablet, and mobile screenshots are captured for both dashboards and Actions Taken.
-- [ ] Keyboard focus, labels, overlap, clipping, and horizontal overflow are manually verified.
+- [x] Keyboard focus on Dashboard and Actions Taken was manually checked in the local browser and reported as passing by the developer on 2026-10-06 (no screenshot supplied).
+- [ ] Labels, overlap, clipping, and horizontal overflow are manually verified across the required viewports.
