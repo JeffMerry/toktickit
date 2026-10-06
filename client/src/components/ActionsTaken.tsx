@@ -36,7 +36,7 @@ function toLocalInputValue(value: string) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
-export function ActionsTaken({ ticketId, canManage = false }: { ticketId: number; canManage?: boolean }) {
+export function ActionsTaken({ ticketId, canManage = false, onChanged }: { ticketId: number; canManage?: boolean; onChanged?: () => Promise<void> | void }) {
   const [actions, setActions] = useState<ActionTaken[]>([]);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -143,8 +143,11 @@ export function ActionsTaken({ ticketId, canManage = false }: { ticketId: number
       const response = await apiFetch(path, { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || (response.status === 409 ? 'This Action Taken has changed. Reload the latest action before retrying.' : 'Unable to save the Action Taken.'));
-      closeForm();
+      setShowForm(false);
+      setEditing(null);
+      setForm(emptyForm());
       await load();
+      await onChanged?.();
     } catch (reason) {
       setFormError(reason instanceof Error ? reason.message : 'Unable to save the Action Taken.');
     } finally {
@@ -162,6 +165,7 @@ export function ActionsTaken({ ticketId, canManage = false }: { ticketId: number
       setCompletion(null);
       setCompletionResult('');
       await load();
+      await onChanged?.();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to update the Action Taken.');
     } finally {

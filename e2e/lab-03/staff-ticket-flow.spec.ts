@@ -4,6 +4,8 @@ import { e2eAccounts, expectViewportFits, signInWithInitialPassword } from './he
 test.describe('Lab 3 E2E: IT Staff ticket operations', () => {
   test('filters the queue, claims a ticket, and adds operational collaboration', async ({ page }) => {
     await signInWithInitialPassword(page, e2eAccounts.staff);
+    await expect(page.getByRole('heading', { name: 'IT Staff Dashboard' })).toBeVisible();
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Ticket Queue' }).click();
     await expect(page.getByRole('heading', { name: 'Ticket Queue' })).toBeVisible();
 
     await page.getByLabel('Search ticket, requester, or email').fill('TKT-2026-SEED-001');
