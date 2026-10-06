@@ -12,17 +12,22 @@ const sortFields = [
   { value: 'updatedAt', label: 'Last updated' }, { value: 'createdAt', label: 'Created' }, { value: 'ticketNumber', label: 'Ticket number' }, { value: 'itPriority', label: 'IT priority' }, { value: 'currentStatus', label: 'Status' },
 ];
 
-export function StaffTicketQueue({ onSelectTicket }: { onSelectTicket: (ticketId: number) => void }) {
+export type StaffQueueFilters = { assignment?: string; ownerId?: string; itPriority?: string; status?: string; terminal?: boolean; urgentActive?: boolean; updatedSince?: string; sortBy?: string; sortOrder?: string };
+
+export function StaffTicketQueue({ onSelectTicket, initialFilters = {} }: { onSelectTicket: (ticketId: number) => void; initialFilters?: StaffQueueFilters }) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [requestedPriority, setRequestedPriority] = useState('');
-  const [itPriority, setItPriority] = useState('');
-  const [status, setStatus] = useState('');
-  const [ownerId, setOwnerId] = useState('');
-  const [assignment, setAssignment] = useState('');
-  const [sortBy, setSortBy] = useState('updatedAt');
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [itPriority, setItPriority] = useState(initialFilters.itPriority ?? '');
+  const [status, setStatus] = useState(initialFilters.status ?? '');
+  const [ownerId, setOwnerId] = useState(initialFilters.ownerId ?? '');
+  const [assignment, setAssignment] = useState(initialFilters.assignment ?? '');
+  const [terminal, setTerminal] = useState(initialFilters.terminal ?? false);
+  const [urgentActive, setUrgentActive] = useState(initialFilters.urgentActive ?? false);
+  const [updatedSince, setUpdatedSince] = useState(initialFilters.updatedSince ?? '');
+  const [sortBy, setSortBy] = useState(initialFilters.sortBy ?? 'updatedAt');
+  const [sortOrder, setSortOrder] = useState(initialFilters.sortOrder ?? 'desc');
   const [page, setPage] = useState(1);
   const [tickets, setTickets] = useState<QueueTicket[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -59,6 +64,9 @@ export function StaffTicketQueue({ onSelectTicket }: { onSelectTicket: (ticketId
       if (status) params.set('status', status);
       if (ownerId) params.set('ownerId', ownerId);
       if (assignment) params.set('assignment', assignment);
+      if (terminal) params.set('terminal', 'false');
+      if (urgentActive) params.set('urgentActive', 'true');
+      if (updatedSince) params.set('updatedSince', updatedSince);
       const response = await apiFetch(`/api/staff/tickets?${params.toString()}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Unable to load the ticket queue.');
@@ -69,22 +77,23 @@ export function StaffTicketQueue({ onSelectTicket }: { onSelectTicket: (ticketId
     } finally {
       setIsLoading(false);
     }
-  }, [search, categoryId, requestedPriority, itPriority, status, ownerId, assignment, sortBy, sortOrder, page, refreshKey]);
+  }, [search, categoryId, requestedPriority, itPriority, status, ownerId, assignment, terminal, urgentActive, updatedSince, sortBy, sortOrder, page, refreshKey]);
 
   useEffect(() => { void loadQueue(); }, [loadQueue]);
 
   const handleSearch = (event: FormEvent) => { event.preventDefault(); setSearch(searchInput.trim()); setPage(1); };
-  const clearFilters = () => { setSearchInput(''); setSearch(''); setCategoryId(''); setRequestedPriority(''); setItPriority(''); setStatus(''); setOwnerId(''); setAssignment(''); setSortBy('updatedAt'); setSortOrder('desc'); setPage(1); };
+  const clearFilters = () => { setSearchInput(''); setSearch(''); setCategoryId(''); setRequestedPriority(''); setItPriority(''); setStatus(''); setOwnerId(''); setAssignment(''); setTerminal(false); setUrgentActive(false); setUpdatedSince(''); setSortBy('updatedAt'); setSortOrder('desc'); setPage(1); };
 
   return (
     <section aria-labelledby="staff-queue-title">
       <div style={styles.header}><div><h1 id="staff-queue-title" style={styles.title}>Ticket Queue</h1><p style={styles.subtitle}>{pagination.total} ticket{pagination.total === 1 ? '' : 's'} match the current queue filters.</p></div><button type="button" onClick={() => setRefreshKey((value) => value + 1)} style={styles.secondaryButton}>Refresh</button></div>
+      {(terminal || urgentActive || updatedSince) && <p role="status">Dashboard filter active: {urgentActive ? 'urgent active' : terminal ? 'open tickets' : 'recently updated'}. <button type="button" onClick={clearFilters}>Clear dashboard filter</button></p>}
       <form onSubmit={handleSearch} style={styles.filters}>
         <label style={styles.label}>Search ticket, requester, or email<input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} style={styles.input} /></label>
         <label style={styles.label}>Category<select aria-label="Category" value={categoryId} onChange={(event) => resetPage(setCategoryId)(event.target.value)} style={styles.input}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label style={styles.label}>Requested Priority<select aria-label="Requested Priority" value={requestedPriority} onChange={(event) => resetPage(setRequestedPriority)(event.target.value)} style={styles.input}><option value="">All requested priorities</option>{priorities.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label style={styles.label}>IT Priority<select aria-label="IT Priority" value={itPriority} onChange={(event) => resetPage(setItPriority)(event.target.value)} style={styles.input}><option value="">All IT priorities</option>{priorities.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label style={styles.label}>Status<select aria-label="Status" value={status} onChange={(event) => resetPage(setStatus)(event.target.value)} style={styles.input}><option value="">All statuses</option>{statuses.map((value) => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
+        <label style={styles.label}>IT Priority<select aria-label="IT Priority" value={itPriority} onChange={(event) => { setUrgentActive(false); resetPage(setItPriority)(event.target.value); }} style={styles.input}><option value="">All IT priorities</option>{priorities.map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label style={styles.label}>Status<select aria-label="Status" value={status} onChange={(event) => { setTerminal(false); setUrgentActive(false); resetPage(setStatus)(event.target.value); }} style={styles.input}><option value="">All statuses</option>{statuses.map((value) => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
         <label style={styles.label}>Owner<select aria-label="Owner" value={ownerId} onChange={(event) => resetPage(setOwnerId)(event.target.value)} style={styles.input}><option value="">All owners</option>{owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name} ({owner.role.replace('_', ' ')})</option>)}</select></label>
         <label style={styles.label}>Assignment<select aria-label="Assignment" value={assignment} onChange={(event) => resetPage(setAssignment)(event.target.value)} style={styles.input}><option value="">All tickets</option><option value="unassigned">Unassigned</option><option value="assigned">Assigned</option></select></label>
         <label style={styles.label}>Sort by<select aria-label="Sort by" value={sortBy} onChange={(event) => resetPage(setSortBy)(event.target.value)} style={styles.input}>{sortFields.map((field) => <option key={field.value} value={field.value}>{field.label}</option>)}</select></label>

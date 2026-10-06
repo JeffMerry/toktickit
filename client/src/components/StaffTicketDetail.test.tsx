@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StaffTicketDetail } from './StaffTicketDetail';
@@ -12,14 +12,19 @@ describe('StaffTicketDetail', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('renders operational controls for an unassigned ticket', async () => {
-    mockedApiFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 1, ticketNumber: 'TKT-2026-DETAIL-A', summary: 'Network outage', description: 'Network outage detail', requestedPriority: 'HIGH', itPriority: 'HIGH', currentStatus: 'NEW', updatedAt: '2026-09-17T00:00:00.000Z',
-        requester: { name: 'Requester A', email: 'requester@example.test' }, owner: null,
-        eligibleOwners: [{ id: 2, name: 'Staff A', role: 'IT_STAFF' }], allowedNextStatuses: ['OPEN', 'CANCELLED'], category: { name: 'Network' }, relatedSystem: { name: 'VPN' }, attachments: [], publicComments: [], internalNotes: [],
-      }),
-    } as Response);
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === '/api/staff/tickets/1') return {
+        ok: true,
+        json: async () => ({
+          id: 1, ticketNumber: 'TKT-2026-DETAIL-A', summary: 'Network outage', description: 'Network outage detail', requestedPriority: 'HIGH', itPriority: 'HIGH', currentStatus: 'NEW', updatedAt: '2026-09-17T00:00:00.000Z',
+          requester: { name: 'Requester A', email: 'requester@example.test' }, owner: null,
+          eligibleOwners: [{ id: 2, name: 'Staff A', role: 'IT_STAFF' }], allowedNextStatuses: ['OPEN', 'CANCELLED'], category: { name: 'Network' }, relatedSystem: { name: 'VPN' }, attachments: [], publicComments: [], internalNotes: [],
+        }),
+      } as Response;
+      if (path === '/api/tickets/1/actions-taken') return { ok: true, json: async () => [] } as Response;
+      if (path === '/api/staff/action-assignees') return { ok: true, json: async () => [] } as Response;
+      throw new Error(`Unexpected API call: ${path}`);
+    });
 
     render(<StaffTicketDetail ticketId={1} onBack={vi.fn()} />);
 
@@ -30,5 +35,10 @@ describe('StaffTicketDetail', () => {
     expect(screen.getByLabelText('Next status')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add Public Comment' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add Internal Note' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Action Taken' })).toBeInTheDocument();
+    expect(screen.queryByText('I confirm this status change.')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Next status'), { target: { value: 'CANCELLED' } });
+    expect(screen.getByText('I confirm this status change.')).toBeInTheDocument();
   });
 });

@@ -4,6 +4,8 @@ import { e2eAccounts, expectViewportFits, signInWithInitialPassword } from './he
 test.describe('Lab 3 E2E: administrator user management', () => {
   test('creates, finds, edits, and resets an account initial password', async ({ page }) => {
     await signInWithInitialPassword(page, e2eAccounts.administrator);
+    await expect(page.getByRole('heading', { name: 'IT Staff Dashboard' })).toBeVisible();
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'User Management' }).click();
     await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
 
     const suffix = Date.now();

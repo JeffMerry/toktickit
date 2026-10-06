@@ -309,3 +309,8 @@ code {
     border-right-color: var(--border);
   }
 }
+
+.lab4-dashboard button:focus-visible {
+  outline: 3px solid #006B3C;
+  outline-offset: 3px;
+}

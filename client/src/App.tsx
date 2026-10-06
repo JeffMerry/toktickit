@@ -11,18 +11,22 @@ import { StaffTicketQueue } from './components/StaffTicketQueue';
 import { StaffTicketDetail } from './components/StaffTicketDetail';
 import { PublicCommentSection } from './components/PublicCommentSection';
 import { UserManagement } from './components/UserManagement';
+import { ActionsTaken } from './components/ActionsTaken';
+import { RequesterResolutionIndication } from './components/RequesterResolutionIndication';
+import { RequesterDashboard, StaffDashboard, type DashboardFilters } from './components/Dashboards';
+import type { StaffQueueFilters } from './components/StaffTicketQueue';
 import { apiFetch } from './lib/api';
 
 type ViewMode = NavigationView;
 
 function MainApp() {
   const { user, isLoading } = useAuth();
-  const [currentView, setCurrentView] = useState<ViewMode>('my-tickets');
+  const [currentView, setCurrentView] = useState<ViewMode>('requester-dashboard');
   const activeView: ViewMode = user?.role === 'IT_STAFF'
-    ? (currentView === 'staff-ticket-detail' ? 'staff-ticket-detail' : 'staff-queue')
+    ? (currentView === 'staff-ticket-detail' || currentView === 'staff-queue' ? currentView : 'staff-dashboard')
     : user?.role === 'ADMINISTRATOR'
-      ? 'user-management'
-      : currentView;
+      ? (currentView === 'staff-queue' || currentView === 'staff-ticket-detail' || currentView === 'user-management' ? currentView : 'staff-dashboard')
+      : currentView === 'staff-dashboard' || currentView === 'staff-queue' || currentView === 'staff-ticket-detail' || currentView === 'user-management' ? 'requester-dashboard' : currentView;
   const [createdTicketNumber, setCreatedTicketNumber] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
   const [selectedStaffTicketId, setSelectedStaffTicketId] = useState<number | null>(null);
@@ -46,6 +50,10 @@ function MainApp() {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedPriority, setSelectedPriority] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const [terminalOnly, setTerminalOnly] = useState(false);
+  const [updatedSince, setUpdatedSince] = useState('');
+  const [staffQueueFilters, setStaffQueueFilters] = useState<StaffQueueFilters>({});
+  const [staffQueueKey, setStaffQueueKey] = useState(0);
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState<number>(1);
@@ -83,6 +91,8 @@ function MainApp() {
       if (selectedCategory) params.append('categoryId', selectedCategory);
       if (selectedPriority) params.append('priority', selectedPriority);
       if (selectedStatus) params.append('status', selectedStatus);
+      if (terminalOnly) params.append('terminal', 'false');
+      if (updatedSince) params.append('updatedSince', updatedSince);
       params.append('sortBy', sortBy);
       params.append('sortOrder', sortOrder);
       params.append('page', String(page));
@@ -103,7 +113,7 @@ function MainApp() {
     } finally {
       setLoadingTickets(false);
     }
-  }, [user, search, selectedCategory, selectedPriority, selectedStatus, sortBy, sortOrder, page]);
+  }, [user, search, selectedCategory, selectedPriority, selectedStatus, terminalOnly, updatedSince, sortBy, sortOrder, page]);
 
   // Fetch Ticket Detail with Ownership Validation (BR-13)
   const fetchTicketDetail = useCallback(async (id: number) => {
@@ -163,6 +173,8 @@ function MainApp() {
     setSelectedCategory('');
     setSelectedPriority('');
     setSelectedStatus('');
+    setTerminalOnly(false);
+    setUpdatedSince('');
     setSortBy('createdAt');
     setSortOrder('desc');
     setPage(1);
@@ -178,11 +190,26 @@ function MainApp() {
     setPage(1);
   };
 
+  const openRequesterFilter = (filters: DashboardFilters) => {
+    handleClearFilters();
+    setSelectedStatus(typeof filters.status === 'string' ? filters.status : '');
+    setTerminalOnly(filters.terminal === false);
+    setUpdatedSince(typeof filters.updatedSince === 'string' ? filters.updatedSince : '');
+    if (filters.sortBy === 'updatedAt') setSortBy('updatedAt');
+    setCurrentView('my-tickets');
+  };
+
+  const openStaffFilter = (filters: DashboardFilters) => {
+    setStaffQueueFilters(filters as StaffQueueFilters);
+    setStaffQueueKey((value) => value + 1);
+    setCurrentView('staff-queue');
+  };
+
   if (isLoading) return <div style={loadingStateStyle}>Restoring your session...</div>;
   if (!user) return <LoginPage />;
   if (user.mustChangePassword) return <ChangePasswordPage />;
 
-  const hasActiveFilters = Boolean(search || selectedCategory || selectedPriority || selectedStatus);
+  const hasActiveFilters = Boolean(search || selectedCategory || selectedPriority || selectedStatus || terminalOnly || updatedSince);
 
   return (
     <div style={{ backgroundColor: '#F5F7F6', minHeight: '100vh' }}>
@@ -191,11 +218,15 @@ function MainApp() {
         onNavigate={(view) => {
           setCreatedTicketNumber(null);
           setSelectedTicketId(null);
+          if (view === 'staff-queue') { setStaffQueueFilters({}); setStaffQueueKey((value) => value + 1); }
+          if (view === 'my-tickets') handleClearFilters();
           setCurrentView(view);
         }}
       />
 
       <main style={{ width: '100%', maxWidth: '1100px', boxSizing: 'border-box', margin: '0 auto', padding: '24px' }}>
+        {activeView === 'requester-dashboard' && <RequesterDashboard onDrillDown={openRequesterFilter} onTicket={handleSelectTicket} onCreate={() => setCurrentView('create-ticket')} />}
+        {activeView === 'staff-dashboard' && <StaffDashboard onDrillDown={openStaffFilter} onTicket={(ticketId) => { setSelectedStaffTicketId(ticketId); setCurrentView('staff-ticket-detail'); }} />}
         {/* 1. My Tickets Screen */}
         {activeView === 'my-tickets' && (
           <div>
@@ -218,6 +249,8 @@ function MainApp() {
                 + Create Ticket
               </button>
             </div>
+
+            {(terminalOnly || updatedSince) && <p role="status">Dashboard filter active: {terminalOnly ? 'open tickets' : 'recently updated'}. <button type="button" onClick={handleClearFilters}>Clear dashboard filter</button></p>}
 
             {createdTicketNumber && (
               <div style={successAlertStyle}>
@@ -304,6 +337,8 @@ function MainApp() {
                 }}
                 onStatusChange={(val) => {
                   setSelectedStatus(val);
+                  setTerminalOnly(false);
+                  setUpdatedSince('');
                   setPage(1);
                 }}
                 onSortChange={handleSortChange}
@@ -400,6 +435,12 @@ function MainApp() {
                 onBack={() => setCurrentView('my-tickets')}
               >
                 <>
+                  <RequesterResolutionIndication
+                    ticketId={ticketDetail.id}
+                    requesterResolvedAt={ticketDetail.requesterResolvedAt}
+                    onRecorded={() => selectedTicketId ? fetchTicketDetail(selectedTicketId) : undefined}
+                  />
+                  <ActionsTaken ticketId={ticketDetail.id} />
                   <AttachmentSection
                     ticketId={ticketDetail.id}
                     attachments={ticketDetail.attachments || []}
@@ -415,7 +456,7 @@ function MainApp() {
         )}
 
         {activeView === 'staff-queue' && (
-          <StaffTicketQueue onSelectTicket={(ticketId) => { setSelectedStaffTicketId(ticketId); setCurrentView('staff-ticket-detail'); }} />
+          <StaffTicketQueue key={staffQueueKey} initialFilters={staffQueueFilters} onSelectTicket={(ticketId) => { setSelectedStaffTicketId(ticketId); setCurrentView('staff-ticket-detail'); }} />
         )}
 
         {activeView === 'staff-ticket-detail' && selectedStaffTicketId && (

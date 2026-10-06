@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { apiFetch } from '../lib/api';
+import { ActionsTaken } from './ActionsTaken';
 
 type DetailTicket = {
   id: number;
@@ -31,8 +32,8 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
   const [publicComment, setPublicComment] = useState('');
   const [internalNote, setInternalNote] = useState('');
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     setError(null);
     try {
       const response = await apiFetch(`/api/staff/tickets/${ticketId}`);
@@ -44,7 +45,7 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load ticket detail.');
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, [ticketId]);
 
@@ -68,8 +69,10 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
 
   const handleStatus = (event: FormEvent) => {
     event.preventDefault();
-    if (status) void mutate(`/api/staff/tickets/${ticketId}/status`, { status, confirmed });
+    if (status) void mutate(`/api/staff/tickets/${ticketId}/status`, { currentStatus: status, confirmed });
   };
+
+  const confirmationRequired = ['RESOLVED', 'CLOSED', 'CANCELLED', 'REOPENED'].includes(status);
 
   const submitDiscussion = async (event: FormEvent, path: string, content: string, clear: () => void) => {
     event.preventDefault();
@@ -104,9 +107,10 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
           <label style={styles.label}>IT Priority<select value={ticket.itPriority} disabled={isUpdating} onChange={(event) => void mutate(`/api/staff/tickets/${ticketId}/priority`, { itPriority: event.target.value })} style={styles.select}>{['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((value) => <option key={value}>{value}</option>)}</select></label>
           <label style={styles.label}>Owner<select value={ticket.owner?.id ?? ''} disabled={isUpdating} onChange={(event) => void mutate(`/api/staff/tickets/${ticketId}/owner`, { ownerId: event.target.value ? Number(event.target.value) : null })} style={styles.select}><option value="">Unassigned</option>{ticket.eligibleOwners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name} ({owner.role.replace('_', ' ')})</option>)}</select></label>
           {!ticket.owner && <button type="button" disabled={isUpdating} onClick={() => void mutate(`/api/staff/tickets/${ticketId}/claim`, {})} style={styles.button}>Claim Ticket</button>}
-          <form onSubmit={handleStatus} style={styles.statusForm}><label style={styles.label}>Next status<select value={status} onChange={(event) => setStatus(event.target.value)} disabled={isUpdating} style={styles.select}><option value="">Select a transition</option>{ticket.allowedNextStatuses.map((value) => <option key={value}>{value}</option>)}</select></label><label style={styles.confirm}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> I confirm this status change when required.</label><button type="submit" disabled={!status || isUpdating} style={styles.button}>Update status</button></form>
+          <form onSubmit={handleStatus} style={styles.statusForm}><label style={styles.label}>Next status<select value={status} onChange={(event) => { setStatus(event.target.value); setConfirmed(false); }} disabled={isUpdating} style={styles.select}><option value="">Select a transition</option>{ticket.allowedNextStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>{status === 'RESOLVED' && <p style={styles.hint}>Resolving requires a completed Action Taken with a result and no unfinished required follow-ups.</p>}{confirmationRequired && <label style={styles.confirm}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> I confirm this status change.</label>}<button type="submit" disabled={!status || isUpdating} style={styles.button}>Update status</button></form>
         </section>
       </div>
+      <ActionsTaken ticketId={ticketId} canManage onChanged={() => load(false)} />
       <div style={styles.grid}>
         <section style={styles.card}><h2 style={styles.heading}>Attachments</h2>{ticket.attachments.length ? ticket.attachments.map((attachment) => <p key={attachment.id}>{attachment.fileName}{attachment.isRemoved ? ` (removed: ${attachment.removalReason || 'no reason'})` : ''}</p>) : <p>No attachments.</p>}</section>
         <section style={styles.card}>
@@ -130,7 +134,7 @@ export function StaffTicketDetail({ ticketId, onBack }: { ticketId: number; onBa
 
 const styles: Record<string, CSSProperties> = {
   back: { border: 0, background: 'transparent', color: '#006B3C', padding: 0, fontWeight: 700, cursor: 'pointer', marginBottom: '16px' },
-  header: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'start', marginBottom: '18px' },
+  header: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '16px', alignItems: 'start', marginBottom: '18px' },
   ticketNumber: { color: '#006B3C', fontWeight: 700, margin: 0 }, title: { color: '#1F2937', margin: '4px 0 0' }, status: { padding: '5px 9px', borderRadius: '12px', background: '#EAF6EF', color: '#006B3C', fontWeight: 700, whiteSpace: 'nowrap' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '16px' }, card: { padding: '18px', border: '1px solid #E5E7EB', borderRadius: '10px', background: '#FFF' }, heading: { color: '#006B3C', fontSize: '1.05rem', margin: '0 0 12px' }, description: { whiteSpace: 'pre-wrap', color: '#374151' }, label: { display: 'grid', gap: '5px', fontWeight: 700, color: '#374151', margin: '12px 0' }, select: { padding: '8px', border: '1px solid #D1D5DB', borderRadius: '6px', background: '#FFF' }, textarea: { minHeight: '70px', padding: '8px', border: '1px solid #D1D5DB', borderRadius: '6px', resize: 'vertical', fontFamily: 'inherit' }, button: { border: 0, borderRadius: '6px', padding: '9px 12px', background: '#006B3C', color: '#FFF', fontWeight: 700, cursor: 'pointer' }, statusForm: { borderTop: '1px solid #E5E7EB', marginTop: '16px', paddingTop: '4px' }, discussionForm: { borderTop: '1px solid #E5E7EB', margin: '14px 0', paddingTop: '4px' }, confirm: { display: 'flex', gap: '7px', alignItems: 'center', fontSize: '.85rem', color: '#374151', margin: '10px 0' }, state: { padding: '32px', textAlign: 'center' }, error: { padding: '12px', border: '1px solid #FCA5A5', borderRadius: '8px', background: '#FEE2E2', color: '#991B1B', marginBottom: '14px' },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '16px', marginBottom: '16px' }, card: { boxSizing: 'border-box', minWidth: 0, padding: '18px', border: '1px solid #E5E7EB', borderRadius: '10px', background: '#FFF' }, heading: { color: '#006B3C', fontSize: '1.05rem', margin: '0 0 12px' }, description: { whiteSpace: 'pre-wrap', color: '#374151' }, label: { display: 'grid', gap: '5px', fontWeight: 700, color: '#374151', margin: '12px 0' }, select: { boxSizing: 'border-box', width: '100%', minWidth: 0, padding: '8px', border: '1px solid #D1D5DB', borderRadius: '6px', background: '#FFF' }, textarea: { boxSizing: 'border-box', width: '100%', minWidth: 0, minHeight: '70px', padding: '8px', border: '1px solid #D1D5DB', borderRadius: '6px', resize: 'vertical', fontFamily: 'inherit' }, button: { border: 0, borderRadius: '6px', padding: '9px 12px', background: '#006B3C', color: '#FFF', fontWeight: 700, cursor: 'pointer' }, statusForm: { borderTop: '1px solid #E5E7EB', marginTop: '16px', paddingTop: '4px' }, discussionForm: { borderTop: '1px solid #E5E7EB', margin: '14px 0', paddingTop: '4px' }, confirm: { display: 'flex', gap: '7px', alignItems: 'center', fontSize: '.85rem', color: '#374151', margin: '10px 0' }, hint: { margin: '8px 0', color: '#4B5563', fontSize: '.875rem' }, state: { padding: '32px', textAlign: 'center' }, error: { padding: '12px', border: '1px solid #FCA5A5', borderRadius: '8px', background: '#FEE2E2', color: '#991B1B', marginBottom: '14px' },
 };

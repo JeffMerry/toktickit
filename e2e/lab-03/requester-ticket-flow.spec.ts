@@ -4,6 +4,8 @@ import { e2eAccounts, signInWithInitialPassword } from './helpers';
 test.describe('Lab 3 E2E: requester ticket and collaboration flow', () => {
   test('creates an owned ticket, opens its detail page, and posts a public comment', async ({ page }) => {
     await signInWithInitialPassword(page, e2eAccounts.requesterTwo);
+    await expect(page.getByRole('heading', { name: 'My Dashboard' })).toBeVisible();
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'My Tickets' }).click();
     await expect(page.getByRole('heading', { name: 'My Tickets' })).toBeVisible();
 
     await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Create Ticket', exact: true }).click();

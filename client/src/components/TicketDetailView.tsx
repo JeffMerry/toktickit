@@ -19,6 +19,7 @@ export interface TicketDetailData {
   description: string;
   requestedPriority: string;
   currentStatus: string;
+  requesterResolvedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
   requester: { id: number; name: string; email: string; department?: string };
