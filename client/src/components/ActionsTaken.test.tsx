@@ -57,13 +57,16 @@ describe('ActionsTaken', () => {
       if (path === '/api/staff/tickets/12/actions-taken' && init?.method === 'POST') return { ok: true, json: async () => ({ ...action, id: 2 }) } as Response;
       throw new Error(`Unexpected API call: ${path}`);
     });
-    render(<ActionsTaken ticketId={12} canManage />);
+    const onChanged = vi.fn();
+    render(<ActionsTaken ticketId={12} canManage onChanged={onChanged} />);
     fireEvent.click(screen.getByRole('button', { name: 'Add Action Taken' }));
     fireEvent.change(screen.getByLabelText('Action description'), { target: { value: 'Check the VPN cable.' } });
     fireEvent.click(screen.getByLabelText('Follow-up required'));
     fireEvent.change(screen.getByLabelText('Follow-up note'), { target: { value: 'Confirm connectivity tomorrow.' } });
     fireEvent.submit(screen.getByRole('form', { name: 'Add Action Taken' }));
     await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith('/api/staff/tickets/12/actions-taken', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Add Action Taken' })).not.toBeInTheDocument());
+    expect(onChanged).toHaveBeenCalledOnce();
   });
 
   it('starts a planned action only for an operational user', async () => {

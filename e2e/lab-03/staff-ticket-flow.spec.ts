@@ -4,6 +4,8 @@ import { e2eAccounts, expectViewportFits, signInWithInitialPassword } from './he
 test.describe('Lab 3 E2E: IT Staff ticket operations', () => {
   test('filters the queue, claims a ticket, and adds operational collaboration', async ({ page }) => {
     await signInWithInitialPassword(page, e2eAccounts.staff);
+    await expect(page.getByRole('heading', { name: 'IT Staff Dashboard' })).toBeVisible();
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Ticket Queue' }).click();
     await expect(page.getByRole('heading', { name: 'Ticket Queue' })).toBeVisible();
 
     await page.getByLabel('Search ticket, requester, or email').fill('TKT-2026-SEED-001');
@@ -27,12 +29,12 @@ test.describe('Lab 3 E2E: IT Staff ticket operations', () => {
     const publicComment = `Staff E2E public update ${Date.now()}`;
     await page.getByLabel('Add Public Comment').fill(publicComment);
     await page.getByRole('button', { name: 'Add Public Comment' }).click();
-    await expect(page.getByText(publicComment, { exact: true })).toBeVisible();
+    await expect(page.locator('p').filter({ hasText: publicComment })).toBeVisible();
 
     const internalNote = `Staff E2E internal note ${Date.now()}`;
     await page.getByLabel('Add Internal Note').fill(internalNote);
     await page.getByRole('button', { name: 'Add Internal Note' }).click();
-    await expect(page.getByText(internalNote, { exact: true })).toBeVisible();
+    await expect(page.locator('p').filter({ hasText: internalNote })).toBeVisible();
 
     await page.setViewportSize({ width: 768, height: 900 });
     await expectViewportFits(page);

@@ -15,13 +15,13 @@ test.describe('Lab 3 E2E: authentication and requester access', () => {
     await expect(page.getByRole('alert')).toContainText(/invalid|unable/i);
 
     await signInWithInitialPassword(page, e2eAccounts.requesterOne);
-    await expect(page.getByRole('heading', { name: 'My Tickets' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'My Dashboard' })).toBeVisible();
 
     await page.setViewportSize({ width: 375, height: 667 });
     await expectViewportFits(page);
 
     await signOut(page);
     await signIn(page, e2eAccounts.requesterOne.email, e2eAccounts.requesterOne.replacementPassword);
-    await expect(page.getByRole('heading', { name: 'My Tickets' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'My Dashboard' })).toBeVisible();
   });
 });

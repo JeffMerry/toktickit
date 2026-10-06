@@ -21,6 +21,13 @@ export const e2eAccounts = {
   },
 } as const;
 
+export const lab4Accounts = {
+  requester: { email: 'david.lee@kmutt.ac.th', replacementPassword: 'Lab4E2ERequester1!' },
+  dashboardRequester: { email: 'sarah.johnson@kmutt.ac.th', replacementPassword: 'Lab4E2ERequester2!' },
+  staff: { email: 'somchai.technician@kmutt.ac.th', replacementPassword: 'Lab4E2EStaff1!' },
+  dashboardStaff: { email: 'niran.engineer@kmutt.ac.th', replacementPassword: 'Lab4E2EStaff2!' },
+} as const;
+
 export async function openLogin(page: Page) {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'TokTickIT' })).toBeVisible();
@@ -44,9 +51,25 @@ export async function signInWithInitialPassword(
   page: Page,
   account: { email: string; replacementPassword: string },
 ) {
+  await signInSeededAccount(page, account);
+}
+
+/** Allows Lab 4 evidence to be rerun after the initial password was changed. */
+export async function signInSeededAccount(page: Page, account: { email: string; replacementPassword: string }) {
   await openLogin(page);
   await signIn(page, account.email, temporaryPassword);
-  await changeTemporaryPassword(page, account.replacementPassword);
+  const state = async () => {
+    if (await page.getByRole('heading', { name: 'Set a new password' }).isVisible()) return 'change';
+    if (await page.getByRole('heading', { name: /^(My Dashboard|IT Staff Dashboard)$/ }).isVisible()) return 'ready';
+    if (await page.getByRole('alert').isVisible()) return 'retry';
+    return 'loading';
+  };
+  await expect.poll(state).not.toBe('loading');
+  if (await state() === 'change') await changeTemporaryPassword(page, account.replacementPassword);
+  else if (await state() === 'retry') {
+    await signIn(page, account.email, account.replacementPassword);
+  }
+  await expect(page.getByRole('heading', { name: /^(My Dashboard|IT Staff Dashboard)$/ })).toBeVisible();
 }
 
 export async function signOut(page: Page) {
